@@ -1,0 +1,317 @@
+[
+  {
+    "file": "pickaxe.glb",
+    "bytes": 38460,
+    "size": [
+      1.24,
+      1.725,
+      0.262
+    ],
+    "bboxMin": [
+      -0.62,
+      -0.433,
+      -0.131
+    ],
+    "bboxMax": [
+      0.62,
+      1.292,
+      0.131
+    ],
+    "longAxis": "y",
+    "originNote": "two-handed double-bladed AXE used as pickaxe stand-in (no CC0 pickaxe reachable). Handle along Y, head at +Y top with blades along +/-X; origin on the handle 0.433 above its bottom end (grip point), centered in X/Z. About 2-3x larger than the blasters: scale ~0.4 to match",
+    "nodes": [
+      "axe_2handed"
+    ],
+    "nodeBounds": {
+      "axe_2handed": {
+        "min": [
+          -0.62,
+          -0.433,
+          -0.131
+        ],
+        "max": [
+          0.62,
+          1.292,
+          0.131
+        ]
+      }
+    },
+    "animations": [],
+    "texturesEmbedded": true,
+    "triangles": 508,
+    "source": "KayKit Adventurers: axe_2handed (gltf+bin+png packed into one glb)",
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "pistol.glb",
+    "bytes": 46488,
+    "size": [
+      0.165,
+      0.338,
+      0.475
+    ],
+    "bboxMin": [
+      -0.082,
+      -0.167,
+      -0.238
+    ],
+    "bboxMax": [
+      0.082,
+      0.171,
+      0.238
+    ],
+    "longAxis": "z",
+    "barrelDirection": "-z",
+    "originNote": "origin at bounding-box center; muzzle toward -Z, grip below at +Z half (z~0..+0.24), up +Y",
+    "nodes": [
+      "blaster-c"
+    ],
+    "nodeBounds": {
+      "blaster-c": {
+        "min": [
+          -0.082,
+          -0.167,
+          -0.238
+        ],
+        "max": [
+          0.082,
+          0.171,
+          0.238
+        ]
+      }
+    },
+    "animations": [],
+    "texturesEmbedded": true,
+    "triangles": 388,
+    "source": "Kenney Blaster Kit: blaster-c",
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "rifle.glb",
+    "bytes": 90680,
+    "size": [
+      0.16,
+      0.371,
+      0.862
+    ],
+    "bboxMin": [
+      -0.08,
+      -0.185,
+      -0.431
+    ],
+    "bboxMax": [
+      0.08,
+      0.185,
+      0.431
+    ],
+    "longAxis": "z",
+    "barrelDirection": "-z",
+    "originNote": "origin at bounding-box center (not at grip); barrel/muzzle toward -Z, stock toward +Z, up +Y; grip hangs below at roughly z=+0.0..+0.1",
+    "nodes": [
+      "blaster-p",
+      "magazine"
+    ],
+    "nodeBounds": {
+      "blaster-p": {
+        "min": [
+          -0.08,
+          -0.143,
+          -0.431
+        ],
+        "max": [
+          0.08,
+          0.185,
+          0.431
+        ]
+      },
+      "magazine": {
+        "min": [
+          -0.03,
+          -0.185,
+          -0.109
+        ],
+        "max": [
+          0.03,
+          -0.035,
+          0.041
+        ]
+      }
+    },
+    "animations": [],
+    "texturesEmbedded": true,
+    "triangles": 882,
+    "source": "Kenney Blaster Kit: blaster-p",
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "shotgun.glb",
+    "bytes": 38636,
+    "size": [
+      0.165,
+      0.275,
+      0.648
+    ],
+    "bboxMin": [
+      -0.082,
+      -0.137,
+      -0.324
+    ],
+    "bboxMax": [
+      0.082,
+      0.137,
+      0.324
+    ],
+    "longAxis": "z",
+    "barrelDirection": "-z",
+    "originNote": "origin at bounding-box center; barrel toward -Z, grip at +Z end (z~+0.1..+0.3) below center, up +Y",
+    "nodes": [
+      "blaster-h"
+    ],
+    "nodeBounds": {
+      "blaster-h": {
+        "min": [
+          -0.082,
+          -0.137,
+          -0.324
+        ],
+        "max": [
+          0.082,
+          0.137,
+          0.324
+        ]
+      }
+    },
+    "animations": [],
+    "texturesEmbedded": true,
+    "triangles": 296,
+    "source": "Kenney Blaster Kit: blaster-h",
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "smg.glb",
+    "bytes": 60856,
+    "size": [
+      0.155,
+      0.362,
+      0.61
+    ],
+    "bboxMin": [
+      -0.078,
+      -0.178,
+      -0.305
+    ],
+    "bboxMax": [
+      0.078,
+      0.184,
+      0.305
+    ],
+    "longAxis": "z",
+    "barrelDirection": "-z",
+    "originNote": "origin at bounding-box center; muzzle toward -Z, up +Y; magazine child node below at z=-0.08",
+    "nodes": [
+      "blaster-j",
+      "magazine"
+    ],
+    "nodeBounds": {
+      "blaster-j": {
+        "min": [
+          -0.078,
+          -0.114,
+          -0.305
+        ],
+        "max": [
+          0.078,
+          0.184,
+          0.305
+        ]
+      },
+      "magazine": {
+        "min": [
+          -0.03,
+          -0.178,
+          -0.155
+        ],
+        "max": [
+          0.03,
+          -0.028,
+          -0.005
+        ]
+      }
+    },
+    "animations": [],
+    "texturesEmbedded": true,
+    "triangles": 548,
+    "source": "Kenney Blaster Kit: blaster-j",
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "sniper.glb",
+    "bytes": 82644,
+    "size": [
+      0.17,
+      0.445,
+      1.31
+    ],
+    "bboxMin": [
+      -0.085,
+      -0.222,
+      -0.655
+    ],
+    "bboxMax": [
+      0.085,
+      0.222,
+      0.655
+    ],
+    "longAxis": "z",
+    "barrelDirection": "-z",
+    "originNote": "origin at bounding-box center; long thin barrel toward -Z, stock toward +Z, up +Y; scope and magazine child nodes near z=+0.1",
+    "nodes": [
+      "blaster-f",
+      "scope",
+      "magazine"
+    ],
+    "nodeBounds": {
+      "blaster-f": {
+        "min": [
+          -0.085,
+          -0.142,
+          -0.655
+        ],
+        "max": [
+          0.085,
+          0.133,
+          0.655
+        ]
+      },
+      "scope": {
+        "min": [
+          -0.075,
+          0.033,
+          -0.045
+        ],
+        "max": [
+          0.075,
+          0.222,
+          0.235
+        ]
+      },
+      "magazine": {
+        "min": [
+          -0.03,
+          -0.222,
+          0.025
+        ],
+        "max": [
+          0.03,
+          -0.042,
+          0.175
+        ]
+      }
+    },
+    "animations": [],
+    "texturesEmbedded": true,
+    "triangles": 768,
+    "source": "Kenney Blaster Kit: blaster-f",
+    "license": "CC0-1.0"
+  }
+]

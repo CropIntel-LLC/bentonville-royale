@@ -1,0 +1,157 @@
+[
+ {
+  "file": "pickup.glb",
+  "size": [
+   1.5,
+   1.3,
+   2.95
+  ],
+  "bboxMin": [
+   -0.75,
+   0,
+   -1.5
+  ],
+  "bboxMax": [
+   0.75,
+   1.3,
+   1.45
+  ],
+  "upAxis": "+Y",
+  "originAtBase": true,
+  "originCenteredXZ": true,
+  "meshes": 5,
+  "primitives": 5,
+  "materials": 1,
+  "tris": 2082,
+  "textures": "embedded-colormap",
+  "suggestedRealHeightM": 5.6,
+  "suggestedRealAxis": "length(z)",
+  "suggestedUniformScale": 1.898,
+  "source": "car-kit/truck.glb",
+  "bytes": 188652
+ },
+ {
+  "file": "sedan.glb",
+  "size": [
+   1.5,
+   1.3,
+   2.55
+  ],
+  "bboxMin": [
+   -0.75,
+   0,
+   -1.3
+  ],
+  "bboxMax": [
+   0.75,
+   1.3,
+   1.25
+  ],
+  "upAxis": "+Y",
+  "originAtBase": true,
+  "originCenteredXZ": true,
+  "meshes": 5,
+  "primitives": 5,
+  "materials": 1,
+  "tris": 2032,
+  "textures": "embedded-colormap",
+  "suggestedRealHeightM": 4.6,
+  "suggestedRealAxis": "length(z)",
+  "suggestedUniformScale": 1.804,
+  "source": "car-kit/sedan.glb",
+  "bytes": 184504
+ },
+ {
+  "file": "suv.glb",
+  "size": [
+   1.5,
+   1.3,
+   2.7
+  ],
+  "bboxMin": [
+   -0.75,
+   0,
+   -1.35
+  ],
+  "bboxMax": [
+   0.75,
+   1.3,
+   1.35
+  ],
+  "upAxis": "+Y",
+  "originAtBase": true,
+  "originCenteredXZ": true,
+  "meshes": 6,
+  "primitives": 6,
+  "materials": 1,
+  "tris": 2474,
+  "textures": "embedded-colormap",
+  "suggestedRealHeightM": 4.8,
+  "suggestedRealAxis": "length(z)",
+  "suggestedUniformScale": 1.778,
+  "source": "car-kit/suv.glb",
+  "bytes": 219840
+ },
+ {
+  "file": "truck.glb",
+  "size": [
+   1.5,
+   1.65,
+   3.25
+  ],
+  "bboxMin": [
+   -0.75,
+   0,
+   -1.65
+  ],
+  "bboxMax": [
+   0.75,
+   1.65,
+   1.6
+  ],
+  "upAxis": "+Y",
+  "originAtBase": true,
+  "originCenteredXZ": true,
+  "meshes": 6,
+  "primitives": 6,
+  "materials": 1,
+  "tris": 2476,
+  "textures": "embedded-colormap",
+  "suggestedRealHeightM": 7.0,
+  "suggestedRealAxis": "length(z)",
+  "suggestedUniformScale": 2.154,
+  "source": "car-kit/delivery.glb",
+  "bytes": 252504
+ },
+ {
+  "file": "van.glb",
+  "size": [
+   1.5,
+   1.35,
+   2.75
+  ],
+  "bboxMin": [
+   -0.75,
+   0,
+   -1.4
+  ],
+  "bboxMax": [
+   0.75,
+   1.35,
+   1.35
+  ],
+  "upAxis": "+Y",
+  "originAtBase": true,
+  "originCenteredXZ": true,
+  "meshes": 5,
+  "primitives": 5,
+  "materials": 1,
+  "tris": 2082,
+  "textures": "embedded-colormap",
+  "suggestedRealHeightM": 5.0,
+  "suggestedRealAxis": "length(z)",
+  "suggestedUniformScale": 1.818,
+  "source": "car-kit/van.glb",
+  "bytes": 187952
+ }
+]

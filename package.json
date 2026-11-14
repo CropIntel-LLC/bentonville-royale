@@ -1,0 +1,19 @@
+{
+  "name": "bentonville-royale",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "An original third-person building battle royale set in real Bentonville, Arkansas.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "fetch-map": "node scripts/fetch-map-data.mjs"
+  },
+  "devDependencies": {
+    "vite": "^8.3.8"
+  },
+  "dependencies": {
+    "three": "^0.187.0"
+  }
+}

@@ -1,0 +1,11 @@
+node_modules
+dist
+_refs
+_dl
+data-raw
+tools/qa/node_modules
+tools/qa/out
+.DS_Store
+.env
+.env.*
+*.pem

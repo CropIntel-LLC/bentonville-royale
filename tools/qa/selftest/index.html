@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>qa selftest</title>
+<link rel="icon" href="data:,">
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}canvas{display:block;width:100vw;height:100vh}</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+canvas.width = innerWidth; canvas.height = innerHeight;
+const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+function sh(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, sh(gl.VERTEX_SHADER, `
+attribute vec2 p; attribute vec3 col; uniform float t; uniform float aspect; varying vec3 v;
+void main(){ float c=cos(t), s=sin(t); vec2 q=vec2(p.x*c-p.y*s, p.x*s+p.y*c); gl_Position=vec4(q.x/aspect, q.y, 0., 1.); v=col; }`));
+gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, `
+precision mediump float; varying vec3 v; void main(){ gl_FragColor=vec4(v,1.); }`));
+gl.linkProgram(prog); gl.useProgram(prog);
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+   0.0,  0.7, 1, 0, 0,
+  -0.6, -0.5, 0, 1, 0,
+   0.6, -0.5, 0, 0, 1,
+]), gl.STATIC_DRAW);
+const ap = gl.getAttribLocation(prog, 'p'), ac = gl.getAttribLocation(prog, 'col');
+gl.enableVertexAttribArray(ap); gl.vertexAttribPointer(ap, 2, gl.FLOAT, false, 20, 0);
+gl.enableVertexAttribArray(ac); gl.vertexAttribPointer(ac, 3, gl.FLOAT, false, 20, 8);
+const ut = gl.getUniformLocation(prog, 't'), ua = gl.getUniformLocation(prog, 'aspect');
+window.__game = { frames: 0, keys: {} };
+addEventListener('keydown', (e) => { window.__game.keys[e.code] = true; });
+function frame(ms) {
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.clearColor(0.08, 0.08, 0.12, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.uniform1f(ut, ms / 1000); gl.uniform1f(ua, canvas.width / canvas.height);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  window.__game.frames++;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+console.error("selftest-error");
+</script>
+</body>
+</html>

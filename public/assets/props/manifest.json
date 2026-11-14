@@ -1,0 +1,529 @@
+[
+ {
+  "file": "awning.glb",
+  "size": [
+   0.4,
+   0.4,
+   0.148
+  ],
+  "bboxMin": [
+   -0.2,
+   0,
+   0.1
+  ],
+  "bboxMax": [
+   0.2,
+   0.4,
+   0.248
+  ],
+  "upAxis": "+Y",
+  "originAtBase": true,
+  "originCenteredXZ": false,
+  "meshes": 1,
+  "primitives": 1,
+  "materials": 1,
+  "tris": 40,
+  "textures": "embedded-colormap",
+  "suggestedRealHeightM": 1.0,
+  "suggestedRealAxis": "height(y)",
+  "suggestedUniformScale": 2.5,
+  "source": "city-kit-commercial/detail-awning.glb",
+  "bytes": 16552
+ },
+ {
+  "file": "barrier.glb",
+  "size": [
+   0.135,
+   0.13,
+   0.225
+  ],
+  "bboxMin": [
+   -0.068,
+   0,
+   -0.112
+  ],
+  "bboxMax": [
+   0.068,
+   0.13,
+   0.112
+  ],
+  "upAxis": "+Y",
+  "originAtBase": true,
+  "originCenteredXZ": true,
+  "meshes": 1,
+  "primitives": 1,
+  "materials": 1,
+  "tris": 60,
+  "textures": "embedded-colormap",
+  "suggestedRealHeightM": 1.0,
+  "suggestedRealAxis": "height(y)",
+  "suggestedUniformScale": 7.692,
+  "source": "city-kit-roads/construction-barrier.glb",
+  "bytes": 18512
+ },
+ {
+  "file": "bench.glb",
+  "size": [
+   0.807,
+   0.526,
+   0.455
+  ],
+  "bboxMin": [
+   -0.404,
+   0,
+   -0.228
+  ],
+  "bboxMax": [
+   0.404,
+   0.526,
+   0.228
+  ],
+  "upAxis": "+Y",
+  "originAtBase": true,
+  "originCenteredXZ": true,
+  "meshes": 1,
+  "primitives": 1,
+  "materials": 1,
+  "tris": 160,
+  "textures": "embedded-colormap",
+  "suggestedRealHeightM": 0.85,
+  "suggestedRealAxis": "height(y)",
+  "suggestedUniformScale": 1.616,
+  "source": "graveyard-kit/bench.glb",
+  "bytes": 26940
+ },
+ {
+  "file": "dumpster.glb",
+  "size": [
+   0.275,
+   0.209,
+   0.37
+  ],
+  "bboxMin": [
+   -0.13,
+   0,
+   -0.185
+  ],
+  "bboxMax": [
+   0.145,
+   0.209,
+   0.185
+  ],
+  "upAxis": "+Y",
+  "originAtBase": true,
+  "originCenteredXZ": true,
+  "meshes": 3,
+  "primitives": 3,
+  "materials": 1,
+  "tris": 234,
+  "textures": "embedded-colormap",
+  "suggestedRealHeightM": 1.4,
+  "suggestedRealAxis": "height(y)",
+  "suggestedUniformScale": 6.699,
+  "source": "city-kit-roads/dumpster.glb",
+  "bytes": 35840
+ },
+ {
+  "file": "fence.glb",
+  "size": [
+   0.475,
+   0.27,
+   0.075
+  ],
+  "bboxMin": [
+   -0.238,
+   0,
+   -0.038
+  ],
+  "bboxMax": [
+   0.238,
+   0.27,
+   0.038
+  ],
+  "upAxis": "+Y",
+  "originAtBase": true,
+  "originCenteredXZ": true,
+  "meshes": 1,
+  "primitives": 1,
+  "materials": 1,
+  "tris": 88,
+  "textures": "embedded-colormap",
+  "suggestedRealHeightM": 1.2,
+  "suggestedRealAxis": "height(y)",
+  "suggestedUniformScale": 4.444,
+  "source": "city-kit-suburban/fence.glb",
+  "bytes": 21476
+ },
+ {
+  "file": "fire_hydrant.glb",
+  "size": [
+   0.135,
+   0.225,
+   0.131
+  ],
+  "bboxMin": [
+   -0.068,
+   0,
+   -0.065
+  ],
+  "bboxMax": [
+   0.068,
+   0.225,
+   0.066
+  ],
+  "upAxis": "+Y",
+  "originAtBase": true,
+  "originCenteredXZ": true,
+  "meshes": 1,
+  "primitives": 1,
+  "materials": 1,
+  "tris": 180,
+  "textures": "embedded-colormap",
+  "suggestedRealHeightM": 0.75,
+  "suggestedRealAxis": "height(y)",
+  "suggestedUniformScale": 3.333,
+  "source": "KAYKIT:firehydrant",
+  "bytes": 29352
+ },
+ {
+  "file": "parasol.glb",
+  "size": [
+   0.346,
+   0.45,
+   0.4
+  ],
+  "bboxMin": [
+   -0.173,
+   0,
+   -0.2
+  ],
+  "bboxMax": [
+   0.173,
+   0.45,
+   0.2
+  ],
+  "upAxis": "+Y",
+  "originAtBase": true,
+  "originCenteredXZ": true,
+  "meshes": 1,
+  "primitives": 1,
+  "materials": 1,
+  "tris": 96,
+  "textures": "embedded-colormap",
+  "suggestedRealHeightM": 2.5,
+  "suggestedRealAxis": "height(y)",
+  "suggestedUniformScale": 5.556,
+  "source": "city-kit-commercial/detail-parasol-a.glb",
+  "bytes": 21348
+ },
+ {
+  "file": "planter.glb",
+  "size": [
+   0.4,
+   0.177,
+   0.3
+  ],
+  "bboxMin": [
+   -0.2,
+   0,
+   -0.151
+  ],
+  "bboxMax": [
+   0.2,
+   0.177,
+   0.149
+  ],
+  "upAxis": "+Y",
+  "originAtBase": true,
+  "originCenteredXZ": true,
+  "meshes": 1,
+  "primitives": 1,
+  "materials": 1,
+  "tris": 204,
+  "textures": "embedded-colormap",
+  "suggestedRealHeightM": 0.5,
+  "suggestedRealAxis": "height(y)",
+  "suggestedUniformScale": 2.825,
+  "source": "city-kit-suburban/planter.glb",
+  "bytes": 32180
+ },
+ {
+  "file": "stop_sign.glb",
+  "size": [
+   0.078,
+   0.494,
+   0.138
+  ],
+  "bboxMin": [
+   -0.051,
+   0,
+   -0.069
+  ],
+  "bboxMax": [
+   0.026,
+   0.494,
+   0.069
+  ],
+  "upAxis": "+Y",
+  "originAtBase": true,
+  "originCenteredXZ": false,
+  "meshes": 1,
+  "primitives": 1,
+  "materials": 1,
+  "tris": 104,
+  "textures": "embedded-colormap",
+  "suggestedRealHeightM": 2.4,
+  "suggestedRealAxis": "height(y)",
+  "suggestedUniformScale": 4.858,
+  "source": "city-kit-roads/road-sign-stop.glb",
+  "bytes": 22172
+ },
+ {
+  "file": "street_sign.glb",
+  "size": [
+   0.196,
+   0.475,
+   0.196
+  ],
+  "bboxMin": [
+   -0.171,
+   0,
+   -0.025
+  ],
+  "bboxMax": [
+   0.025,
+   0.475,
+   0.171
+  ],
+  "upAxis": "+Y",
+  "originAtBase": true,
+  "originCenteredXZ": false,
+  "meshes": 1,
+  "primitives": 1,
+  "materials": 1,
+  "tris": 154,
+  "textures": "embedded-colormap",
+  "suggestedRealHeightM": 2.8,
+  "suggestedRealAxis": "height(y)",
+  "suggestedUniformScale": 5.895,
+  "source": "city-kit-roads/road-sign-street.glb",
+  "bytes": 27400
+ },
+ {
+  "file": "streetlamp.glb",
+  "size": [
+   0.05,
+   0.6,
+   0.238
+  ],
+  "bboxMin": [
+   -0.025,
+   0,
+   -0.213
+  ],
+  "bboxMax": [
+   0.025,
+   0.6,
+   0.025
+  ],
+  "upAxis": "+Y",
+  "originAtBase": true,
+  "originCenteredXZ": false,
+  "meshes": 1,
+  "primitives": 1,
+  "materials": 1,
+  "tris": 60,
+  "textures": "embedded-colormap",
+  "suggestedRealHeightM": 6,
+  "suggestedRealAxis": "height(y)",
+  "suggestedUniformScale": 10.0,
+  "source": "city-kit-roads/light-square.glb",
+  "bytes": 18444
+ },
+ {
+  "file": "streetlamp_curved.glb",
+  "size": [
+   0.05,
+   0.675,
+   0.225
+  ],
+  "bboxMin": [
+   -0.025,
+   0,
+   -0.2
+  ],
+  "bboxMax": [
+   0.025,
+   0.675,
+   0.025
+  ],
+  "upAxis": "+Y",
+  "originAtBase": true,
+  "originCenteredXZ": false,
+  "meshes": 1,
+  "primitives": 1,
+  "materials": 1,
+  "tris": 92,
+  "textures": "embedded-colormap",
+  "suggestedRealHeightM": 6.5,
+  "suggestedRealAxis": "height(y)",
+  "suggestedUniformScale": 9.63,
+  "source": "city-kit-roads/light-curved.glb",
+  "bytes": 20940
+ },
+ {
+  "file": "table.glb",
+  "size": [
+   0.852,
+   0.347,
+   0.447
+  ],
+  "bboxMin": [
+   0,
+   0,
+   -0.447
+  ],
+  "bboxMax": [
+   0.852,
+   0.347,
+   0
+  ],
+  "upAxis": "+Y",
+  "originAtBase": true,
+  "originCenteredXZ": false,
+  "meshes": 1,
+  "primitives": 1,
+  "materials": 1,
+  "tris": 178,
+  "textures": "none-material-colors",
+  "suggestedRealHeightM": 0.75,
+  "suggestedRealAxis": "height(y)",
+  "suggestedUniformScale": 2.161,
+  "source": "furniture-kit/tablecross.glb",
+  "bytes": 12100
+ },
+ {
+  "file": "tent.glb",
+  "size": [
+   0.875,
+   0.561,
+   0.666
+  ],
+  "bboxMin": [
+   -0.437,
+   0,
+   -0.348
+  ],
+  "bboxMax": [
+   0.437,
+   0.561,
+   0.318
+  ],
+  "upAxis": "+Y",
+  "originAtBase": true,
+  "originCenteredXZ": true,
+  "meshes": 1,
+  "primitives": 2,
+  "materials": 2,
+  "tris": 232,
+  "textures": "none-material-colors",
+  "suggestedRealHeightM": 2.0,
+  "suggestedRealAxis": "height(y)",
+  "suggestedUniformScale": 3.565,
+  "source": "nature-kit/tent-detailedopen.glb",
+  "bytes": 15280
+ },
+ {
+  "file": "traffic_cone.glb",
+  "size": [
+   0.075,
+   0.094,
+   0.075
+  ],
+  "bboxMin": [
+   -0.038,
+   0,
+   -0.038
+  ],
+  "bboxMax": [
+   0.038,
+   0.094,
+   0.038
+  ],
+  "upAxis": "+Y",
+  "originAtBase": true,
+  "originCenteredXZ": true,
+  "meshes": 1,
+  "primitives": 1,
+  "materials": 1,
+  "tris": 66,
+  "textures": "embedded-colormap",
+  "suggestedRealHeightM": 0.7,
+  "suggestedRealAxis": "height(y)",
+  "suggestedUniformScale": 7.447,
+  "source": "city-kit-roads/construction-cone.glb",
+  "bytes": 18512
+ },
+ {
+  "file": "traffic_light.glb",
+  "size": [
+   0.118,
+   0.515,
+   0.09
+  ],
+  "bboxMin": [
+   -0.073,
+   0,
+   -0.045
+  ],
+  "bboxMax": [
+   0.045,
+   0.515,
+   0.045
+  ],
+  "upAxis": "+Y",
+  "originAtBase": true,
+  "originCenteredXZ": false,
+  "meshes": 1,
+  "primitives": 1,
+  "materials": 1,
+  "tris": 212,
+  "textures": "embedded-colormap",
+  "suggestedRealHeightM": 5,
+  "suggestedRealAxis": "height(y)",
+  "suggestedUniformScale": 9.709,
+  "source": "city-kit-roads/traffic-light.glb",
+  "bytes": 31796
+ },
+ {
+  "file": "trash_can.glb",
+  "size": [
+   0.208,
+   0.428,
+   0.234
+  ],
+  "bboxMin": [
+   -0.104,
+   0,
+   -0.112
+  ],
+  "bboxMax": [
+   0.104,
+   0.428,
+   0.122
+  ],
+  "upAxis": "+Y",
+  "originAtBase": true,
+  "originCenteredXZ": true,
+  "meshes": 1,
+  "primitives": 2,
+  "materials": 2,
+  "tris": 68,
+  "textures": "none-material-colors",
+  "suggestedRealHeightM": 0.9,
+  "suggestedRealAxis": "height(y)",
+  "suggestedUniformScale": 2.103,
+  "source": "furniture-kit/trashcan.glb",
+  "bytes": 6412
+ }
+]
