@@ -430,6 +430,39 @@ export class Structures {
 
   // ----------------------------------------------------------------- placing
 
+  /** Compact list of live pieces for the host to broadcast. */
+  exportNet() {
+    const out = [];
+    for (const p of this.pieces) {
+      if (p.alive === false) continue;
+      out.push([p.kind, p.mat, p.x, p.y, p.z, Math.round(p.rot * 100), Math.round(p.hp), p.key]);
+    }
+    return out;
+  }
+
+  /** Client: make the local grid match the host's list. */
+  importNet(rows) {
+    const keep = new Set();
+    for (const row of rows || []) {
+      const [kind, mat, x, y, z, rot100, hp, key] = row;
+      keep.add(key);
+      const have = this.slots.get(key);
+      if (have) {
+        have.hp = Math.max(1, Math.min(have.maxHp, hp));
+        continue;
+      }
+      const piece = this.place({ kind, x, y, z, rot: rot100 / 100, key, level: Math.round(y / 3), valid: true }, mat, null);
+      if (piece) {
+        piece.hp = hp;
+        piece.growing = false;
+        piece.age = 99;
+      }
+    }
+    for (const p of this.pieces.slice()) {
+      if (!keep.has(p.key)) this.remove(p, false);
+    }
+  }
+
   /** Build it. Caller has already checked and spent BUILD.cost mats. */
   place(placement, mat, owner = null) {
     if (!placement || !BUILD.pieces.includes(placement.kind)) return null;

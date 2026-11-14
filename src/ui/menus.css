@@ -498,3 +498,43 @@
   cursor: not-allowed;
   opacity: 0.45;
 }
+
+.mn-field {
+  width: 9rem;
+  padding: calc(var(--u) * 6) calc(var(--u) * 10);
+  border: calc(var(--u) * 3) solid var(--br-ink);
+  border-radius: calc(var(--u) * 10);
+  background: #fff;
+  color: var(--br-ink);
+  font-family: var(--br-display);
+  font-size: calc(var(--u) * 18);
+  text-align: center;
+}
+.mn-code-input {
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.mn-room {
+  font-size: calc(var(--u) * 42);
+  letter-spacing: 0.14em;
+  text-align: center;
+}
+.mn-roster {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: calc(var(--u) * 4);
+  text-align: center;
+  font-family: var(--br-display);
+}
+.mn-note {
+  margin: 0;
+  text-align: center;
+  font-size: calc(var(--u) * 14);
+  opacity: 0.8;
+}
+.mn-error:not(:empty) {
+  color: #ff5d4a;
+  opacity: 1;
+}

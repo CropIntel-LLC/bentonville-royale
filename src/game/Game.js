@@ -21,6 +21,8 @@ import { sfx } from '../audio/Sfx.js';
 import { buildHud } from '../ui/hud.js';
 import { Minimap } from '../ui/Minimap.js';
 import { CharacterKit, Character } from './Character.js';
+import { Puppet } from './Puppet.js';
+import { NetInput } from '../net/NetInput.js';
 import { Combat } from './Combat.js';
 import { Player, placeOrbitCamera, itemLabel } from './Player.js';
 import * as StormMod from './Storm.js';
@@ -96,6 +98,16 @@ export class Game {
     this.matchTime = 0;
     this.sfx = sfx;
     this.errors = [];
+    this.role = 'solo'; // 'solo' | 'host' | 'client'
+    this.remotes = [];
+    this.roster = [];
+    this.puppets = new Map();
+    this.match = null;
+    this.hostId = '';
+    this._netId = 0;
+    this._netName = 'You';
+    this._feed = [];
+    this._netAlive = 0;
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.setSize(window.innerWidth, window.innerHeight, false);
@@ -193,7 +205,8 @@ export class Game {
     const Inventory = InvMod.Inventory;
     const playerChar = this.kits.player ? new Character(this.kits.player, { weapons: weaponScenes, canopyColor: 0xffc21f }) : null;
     if (playerChar) this.scene.add(playerChar.root);
-    this.player = new Player({ id: 0, name: 'You', character: playerChar, inventory: new Inventory() });
+    this.player = new Player({ id: this._netId || 0, name: this._netName || 'You', character: playerChar, inventory: new Inventory() });
+    this.player.predictOnly = this.role === 'client';
 
     const BotsCls = BotsMod.Bots;
     const botKits = ['bot_a', 'bot_b', 'bot_c'].map((k) => this.kits[k]).filter(Boolean);
@@ -250,22 +263,26 @@ export class Game {
     p.mode = 'bus';
     if (p.character) p.character.root.visible = false;
 
-    // bots
+    // bots — guests take slots, clients draw puppets instead of simulating
+    this._clearPuppets();
+    this._clearRemotes();
+    if (this.role === 'host') this._spawnRemotes(lm);
     this.bots.clear();
-    const names = shuffle(BOT_NAMES.slice(), rng).slice(0, MATCH.bots);
+    const botCount = this.role === 'client' ? 0 : Math.max(0, MATCH.bots - this.remotes.length);
+    const names = shuffle(BOT_NAMES.slice(), rng).slice(0, botCount);
     const dropPoints = [];
-    for (let i = 0; i < MATCH.bots; i++) {
+    for (let i = 0; i < botCount; i++) {
       const z = DROP_ZONES[Math.floor(rng() * DROP_ZONES.length)];
       const l = this.world.landmarks[z.key] || lm;
       const pt = this.world.randomOpenPoint(rng, l.x * 0.5 + this.storm.cx * 0.5, l.z * 0.5 + this.storm.cz * 0.5, STORM.startRadius * 0.7);
       dropPoints.push({ x: pt.x, z: pt.z });
     }
     try {
-      this.bots.spawn(MATCH.bots, rng, { names, difficulty: this.settings.difficulty, dropPoints, launchWindow: DROP_SECONDS });
+      if (botCount) this.bots.spawn(botCount, rng, { names, difficulty: this.settings.difficulty, dropPoints, launchWindow: DROP_SECONDS });
     } catch (err) {
       this._error('bots.spawn', err);
     }
-    this.totalActors = 1 + this.bots.list.length;
+    this.totalActors = 1 + this.remotes.length + this.bots.list.length;
 
     this.state = 'drop';
     this.dropLeft = DROP_SECONDS;
@@ -312,6 +329,7 @@ export class Game {
 
   /** Back to the main menu. */
   leave() {
+    this._clearPuppets();
     this.state = 'menu';
     this.paused = false;
     this.input.unlock();
@@ -330,6 +348,7 @@ export class Game {
     this.state = 'over';
     const placement = victory ? 1 : this._deathPlacement || this.combat.aliveCount + 1;
     this.result = { victory, placement, kills: this.player.kills, total: this.totalActors, time: this.matchTime, killer: this.player.lastKillerName || null };
+    if (this.match && this.role === 'host') this.match.announceOver();
     this.input.unlock();
     sfx.stopLoop('storm_wind');
     sfx.stopLoop('glide_wind');
@@ -346,6 +365,9 @@ export class Game {
     if (target === p) {
       this.hud.damageFlash(clamp(amount / 40, 0.15, 1));
       if (!info.storm) sfx.play('hurt', { volume: 0.7 });
+    }
+    if (this.role === 'host' && info.source && info.source.isPlayer && info.source !== p) {
+      this._feed.push({ t: 'fx', kind: 'hit', from: String(info.source.id), head: info.headshot ? 1 : 0 });
     }
     if (info.source === p && target !== p) {
       this.hud.hitMarker(!!info.headshot, !target.alive || target.health <= 0);
@@ -379,7 +401,9 @@ export class Game {
     } else text = `${victim.name} was eliminated`;
     if (killer === p) kind = 'kill';
     if (victim === p) kind = 'self';
+    if (victim.isPlayer) victim._place = this.combat.aliveCount + 1;
     this.hud.killFeed(text, kind);
+    if (this.role === 'host') this._feed.push({ t: 'feed', text, kind: victim === p ? 'elim' : kind });
 
     if (killer === p) {
       this.hud.announce(`ELIMINATED ${victim.name.toUpperCase()}`, `${p.kills} elimination${p.kills === 1 ? '' : 's'}`, 1800);
@@ -421,10 +445,13 @@ export class Game {
     if (input.hit('Escape') && !input.locked && (this.state === 'play' || this.state === 'drop')) this.pause(!this.paused);
     if (input.hit('KeyM') && this.state === 'play' && !this.paused) this.fullMapOpen = !this.fullMapOpen;
 
-    const live = !this.paused && (this.state === 'drop' || this.state === 'play' || this.state === 'over');
+    this._frameDt = dt;
+    const inMatch = this.state === 'drop' || this.state === 'play' || this.state === 'over';
+    const live = inMatch && (!this.paused || this.role !== 'solo');
     if (live) this._simulate(dt);
 
     this._present(dt);
+    if (this.match) this.match.afterFrame(this);
     input.endFrame();
   }
 
@@ -433,16 +460,20 @@ export class Game {
     const input = this.input;
 
     if (this.state === 'drop') {
-      this.dropLeft -= dt;
+      if (this.role !== 'client') this.dropLeft -= dt;
       this.menus.showDropBanner(true, this.dropLeft, this.dropZone.label);
-      if (input.hit('Space') || this.dropLeft <= 0) this.jump();
+      if ((this.role !== 'client' && (input.hit('Space') || this.dropLeft <= 0)) || (this.role === 'client' && (input.hit('Space') || this.dropLeft <= 0))) this.jump();
       // slowly orbit the camera above the marker
       const m = this.dropMarker;
       p.pos.set(m.x, PLAYER.dropHeight, m.z);
       p.heading += dt * 0.05;
     } else {
       this.matchTime += dt;
-      this.storm.update(dt);
+      if (this.role !== 'client') this.storm.update(dt);
+      if (this.role === 'host' && this.dropLeft > 0) {
+        this.dropLeft -= dt;
+        if (this.dropLeft <= 0) this._forceRemoteDrops();
+      }
     }
 
     if (this.state === 'play' || this.state === 'over') {
@@ -453,11 +484,14 @@ export class Game {
       } else {
         p.update(dt, NO_INPUT, this);
       }
-      this._stormDamage(dt);
+      if (this.role !== 'client') this._stormDamage(dt);
+      if (this.role === 'host') this._updateRemotes(dt);
     }
 
+    for (const pup of this.puppets.values()) pup.update(dt);
+
     try {
-      this.bots.update(dt, { player: p, storm: this.storm, time: this.time });
+      if (this.role !== 'client') this.bots.update(dt, { player: p, storm: this.storm, time: this.time });
     } catch (err) {
       this._error('bots.update', err);
     }
@@ -471,7 +505,7 @@ export class Game {
         this._endTimer -= dt;
         if (this.spectating && !this.spectating.alive) this.spectating = this.combat.actors.find((a) => a.alive) || null;
         if (this._endTimer <= 0) this._endMatch(false);
-      } else if (this.totalActors > 1 && alive <= 1) {
+      } else if (this.role !== 'client' && this.totalActors > 1 && alive <= 1) {
         if (!this._winPending) {
           this._winPending = true;
           this._endTimer = WIN_SCREEN_DELAY;
@@ -563,7 +597,7 @@ export class Game {
     hud.setWeapon(p.buildPiece ? null : inv.weaponHud ? inv.weaponHud(rl) : null);
     const kind = p.buildPiece ? 'build' : inv.current() && inv.current().type === 'weapon' ? 'gun' : 'pickaxe';
     hud.setCrosshair({ spread01: clamp(p.computeSpread() / 0.06, 0, 1), hit: false, kind });
-    hud.setCounts({ alive: this.combat.aliveCount, eliminations: p.kills });
+    hud.setCounts({ alive: this.role === 'client' ? this._netAlive || this.combat.aliveCount : this.combat.aliveCount, eliminations: p.kills });
     hud.setCompass(((p.heading * 180) / Math.PI + 360) % 360);
     const s = this.storm;
     if (this.state !== 'drop') hud.setStorm(s.hudState(p.pos.x, p.pos.z));
@@ -671,6 +705,288 @@ export class Game {
     if (!c) return;
     c.style.pointerEvents = on ? 'auto' : '';
     c.style.cursor = on ? 'crosshair' : '';
+  }
+
+  // ---------------------------------------------------------------- friends (host authority)
+
+  /** role: 'solo' | 'host' | 'client'. Safe to call before load(). */
+  prepareNet({ role = 'solo', selfId = 0, name = 'You', hostId = '' } = {}) {
+    this.role = role;
+    this._netId = selfId || 0;
+    this._netName = name || 'You';
+    this.hostId = hostId || selfId || '';
+    if (this.player) {
+      this.player.id = this._netId || 0;
+      this.player.name = this._netName;
+      this.player.local = true;
+      this.player.netDrive = false;
+      this.player.predictOnly = role === 'client';
+    }
+  }
+
+  /** Lobby roster including the host. Guests become remote pawns at match start. */
+  setRoster(players) {
+    this.roster = (players || []).filter((p) => p && !p.host).map((p) => ({ id: String(p.id), name: p.name || 'Player' }));
+  }
+
+  _spawnRemotes(lm) {
+    const colors = [0x5ec8ff, 0xff5d8f, 0x7dff6b, 0xffb020, 0xc08cff, 0xff6b4a, 0x4ad6c8];
+    const kits = ['bot_a', 'bot_b', 'bot_c'];
+    this.remotes = [];
+    this.roster.forEach((r, i) => {
+      const kit = this.kits[kits[i % kits.length]];
+      const ch = kit ? new Character(kit, { weapons: this.weaponScenes, canopyColor: colors[i % colors.length] }) : null;
+      if (ch) {
+        this.scene.add(ch.root);
+        ch.root.visible = false;
+      }
+      const player = new Player({ id: r.id, name: r.name, character: ch, inventory: new InvMod.Inventory() });
+      player.local = false;
+      player.netDrive = true;
+      player.mode = 'bus';
+      player.pos.set(lm.x, PLAYER.dropHeight, lm.z);
+      this.combat.register(player);
+      this.remotes.push({ id: r.id, player, input: new NetInput(), last: performance.now() });
+    });
+  }
+
+  _clearRemotes() {
+    for (const r of this.remotes) {
+      this.combat.unregister(r.player);
+      if (r.player.character) {
+        r.player.character.root.removeFromParent();
+        r.player.character.dispose();
+      }
+    }
+    this.remotes = [];
+  }
+
+  _clearPuppets() {
+    for (const pup of this.puppets.values()) pup.dispose();
+    this.puppets.clear();
+  }
+
+  _forceRemoteDrops() {
+    for (const r of this.remotes) {
+      if (r.player.mode !== 'bus') continue;
+      r.player.spawnDrop(r.player.pos.x, r.player.pos.z);
+      if (r.player.character) r.player.character.root.visible = true;
+    }
+  }
+
+  _updateRemotes(dt) {
+    const now = performance.now();
+    for (const r of this.remotes) {
+      if (now - r.last > 1500) r.input.releaseAll();
+      r.player.update(dt, r.input, this);
+      r.input.endFrame();
+    }
+  }
+
+  dropRemote(id) {
+    const r = this.remotes.find((x) => x.id === id);
+    if (r && r.player.alive && (this.state === 'play' || this.state === 'drop')) {
+      this.combat.applyDamage(r.player, 1e6, { storm: true });
+    }
+  }
+
+  pushRemoteInput(id, pkt) {
+    const r = this.remotes.find((x) => x.id === id);
+    if (!r || !pkt) return;
+    r.input.apply(pkt);
+    r.player.netPose = {
+      x: +pkt.x || 0,
+      y: +pkt.y || 0,
+      z: +pkt.z || 0,
+      vx: +pkt.vx || 0,
+      vy: +pkt.vy || 0,
+      vz: +pkt.vz || 0,
+      heading: +pkt.h || 0,
+      pitch: +pkt.pitch || 0,
+      mode: pkt.mode || r.player.mode,
+      ax: +pkt.ax || 0,
+      ay: +pkt.ay || 0,
+      az: +pkt.az || 0,
+      dx: +pkt.dx || 0,
+      dy: +pkt.dy || 0,
+      dz: +pkt.dz || -1,
+    };
+    r.last = performance.now();
+  }
+
+  _packActor(a) {
+    return [
+      String(a.id),
+      Math.round(a.pos.x * 10),
+      Math.round(a.pos.y * 10),
+      Math.round(a.pos.z * 10),
+      Math.round(a.heading * 100),
+      Math.round((a.pitch || 0) * 100),
+      a.alive ? 1 : 0,
+      Math.round(a.health),
+      Math.round(a.shield || 0),
+      a.mode || 'ground',
+      a.name || '',
+    ];
+  }
+
+  collectSnap() {
+    const s = this.storm;
+    const players = [this._packActor(this.player)];
+    for (const r of this.remotes) players.push(this._packActor(r.player));
+    const bots = [];
+    for (const b of this.bots.list) {
+      const mode = !b.alive ? 'dead' : b.gliding ? 'glide' : b.grounded ? 'ground' : 'freefall';
+      bots.push(this._packActor({ pos: b.pos, heading: b.heading, pitch: b.pitch || 0, alive: b.alive, health: b.health, shield: b.shield, name: b.name, id: 'b' + b.id, mode }));
+    }
+    return {
+      t: 'snap',
+      players,
+      bots,
+      storm: [Math.round(s.cx * 10), Math.round(s.cz * 10), Math.round(s.r * 10), Math.round(s.nextCx * 10), Math.round(s.nextCz * 10), Math.round(s.nextR * 10), s.phase, s.mode, Math.round(s.secondsLeft * 10) / 10, s.dps],
+      alive: this.combat.aliveCount,
+      total: this.totalActors,
+      dropLeft: this.dropLeft || 0,
+    };
+  }
+
+  collectYou(player) {
+    const inv = player.inventory;
+    return {
+      t: 'you',
+      hp: player.health,
+      sh: player.shield,
+      alive: player.alive ? 1 : 0,
+      kills: player.kills | 0,
+      place: player._place || 0,
+      killer: player.lastKillerName || '',
+      inv: inv
+        ? { slots: inv.slots.map((s) => (s ? { ...s } : null)), selected: inv.selected, ammo: { ...inv.ammo }, mats: { ...inv.mats } }
+        : null,
+    };
+  }
+
+  collectWorld() {
+    return {
+      pieces: this.structures ? this.structures.exportNet() : [],
+      loot: this.loot ? this.loot.exportNet() : [],
+    };
+  }
+
+  drainFeed() {
+    const out = this._feed;
+    this._feed = [];
+    return out;
+  }
+
+  applySnap(msg) {
+    if (this.role !== 'client' || !msg) return;
+    const self = String(this.player.id);
+    const seen = new Set();
+    const take = (row, human) => {
+      const id = String(row[0]);
+      if (id === self) return;
+      seen.add(id);
+      let pup = this.puppets.get(id);
+      if (!pup) {
+        pup = this._makePuppet(id, human && id === String(this.hostId));
+        this.puppets.set(id, pup);
+      }
+      pup.setSample({
+        x: row[1] / 10,
+        y: row[2] / 10,
+        z: row[3] / 10,
+        heading: row[4] / 100,
+        pitch: row[5] / 100,
+        alive: !!row[6],
+        mode: row[9],
+        name: row[10],
+      });
+    };
+    for (const row of msg.players || []) take(row, true);
+    for (const row of msg.bots || []) take(row, false);
+    for (const [id, pup] of this.puppets) {
+      if (!seen.has(id)) {
+        pup.dispose();
+        this.puppets.delete(id);
+      }
+    }
+    const st = msg.storm;
+    if (st && this.storm) {
+      this.storm.cx = st[0] / 10;
+      this.storm.cz = st[1] / 10;
+      this.storm.r = st[2] / 10;
+      this.storm.nextCx = st[3] / 10;
+      this.storm.nextCz = st[4] / 10;
+      this.storm.nextR = st[5] / 10;
+      this.storm.phase = st[6];
+      this.storm.mode = st[7];
+      this.storm.secondsLeft = st[8];
+      this.storm.dps = st[9];
+    }
+    this._netAlive = msg.alive | 0;
+    if (msg.total) this.totalActors = msg.total;
+    if (this.state === 'drop' && msg.dropLeft != null) this.dropLeft = msg.dropLeft;
+  }
+
+  _makePuppet(id, hostLooks) {
+    const kits = hostLooks ? ['player'] : ['bot_a', 'bot_b', 'bot_c'];
+    let h = 0;
+    for (let i = 0; i < id.length; i++) h = (h * 33 + id.charCodeAt(i)) >>> 0;
+    const kit = this.kits[kits[h % kits.length]] || this.kits.player;
+    const colors = [0x5ec8ff, 0xff5d8f, 0x7dff6b, 0xffb020, 0xc08cff, 0xff6b4a, 0xffc21f];
+    const ch = kit ? new Character(kit, { weapons: this.weaponScenes, canopyColor: colors[h % colors.length] }) : null;
+    if (ch) this.scene.add(ch.root);
+    return new Puppet(id, ch);
+  }
+
+  applyYou(msg) {
+    if (this.role !== 'client' || !msg) return;
+    const p = this.player;
+    const was = p.alive;
+    p.health = msg.hp;
+    p.shield = msg.sh;
+    p.kills = msg.kills | 0;
+    if (msg.inv && p.inventory) {
+      const inv = p.inventory;
+      inv.slots = msg.inv.slots.map((s) => (s ? { ...s } : null));
+      inv.selected = msg.inv.selected;
+      inv.ammo = { ...inv.ammo, ...msg.inv.ammo };
+      inv.mats = { ...inv.mats, ...msg.inv.mats };
+      inv.version = (inv.version || 0) + 1;
+      const cur = inv.current && inv.current();
+      if (p.character) p.character.setEquipped(cur && cur.type === 'weapon' ? cur.id : p.buildPiece ? 'pickaxe' : 'pickaxe', !(cur && WEAPONS[cur.id] && WEAPONS[cur.id].twoHanded === false));
+    }
+    if (was && !msg.alive) {
+      p.alive = false;
+      p.health = 0;
+      p.lastKillerName = msg.killer || null;
+      this._deathPlacement = msg.place || this._netAlive || 2;
+      this._endTimer = DEATH_SCREEN_DELAY;
+      this.hud.announce('ELIMINATED', msg.killer ? 'by ' + msg.killer : '', 3000);
+      if (p.character) p.character.die();
+      sfx.stopLoop('glide_wind');
+    }
+  }
+
+  applyWorld(msg) {
+    if (this.role !== 'client' || !msg) return;
+    if (this.structures && msg.pieces) this.structures.importNet(msg.pieces);
+    if (this.loot && msg.loot) this.loot.importNet(msg.loot);
+  }
+
+  applyFx(msg) {
+    if (msg && msg.kind === 'hit' && String(msg.from) === String(this.player.id)) this.hud.hitMarker(!!msg.head, false);
+  }
+
+  finishNet(msg) {
+    if (this.state === 'over' || !msg) return;
+    this._deathPlacement = msg.placement || this._deathPlacement;
+    this.player.kills = msg.kills | 0;
+    if (msg.killer) this.player.lastKillerName = msg.killer;
+    if (msg.total) this.totalActors = msg.total;
+    if (msg.time) this.matchTime = msg.time;
+    this._endMatch(!!msg.victory);
   }
 
   _error(where, err) {

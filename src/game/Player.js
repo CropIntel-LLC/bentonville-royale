@@ -22,6 +22,30 @@ const _pivot = new THREE.Vector3();
 const _cam = new THREE.Vector3();
 const _v = new THREE.Vector3();
 
+const SILENT_HUD = {
+  prompt() {},
+  toast() {},
+  floatText() {},
+  setObjectBar() {},
+  damageFlash() {},
+  hitMarker() {},
+  announce() {},
+  killFeed() {},
+};
+const SILENT_SFX = { play() {}, startLoop() {}, stopLoop() {}, setLoopGain() {}, setListener() {} };
+
+/** Remote pawns must not drive the local HUD or the non-positional ear. Called from Player.update. */
+function quietGame(g) {
+  return new Proxy(g, {
+    get(t, k) {
+      if (k === 'hud') return SILENT_HUD;
+      if (k === 'sfx') return SILENT_SFX;
+      const v = t[k];
+      return typeof v === 'function' ? v.bind(t) : v;
+    },
+  });
+}
+
 /**
  * Positions `camera` behind `pivot` on an orbit (heading/pitch), pulled in
  * when world geometry is in the way. Shared by the player and spectating.
@@ -94,6 +118,10 @@ export class Player {
     this.lastEquipped = null;
     this.emoting = false;
     this.god = false;
+    this.local = true;
+    this.netDrive = false; // host: pose comes from the network, actions run here
+    this.predictOnly = false; // client: move locally, the host runs actions
+    this.netPose = null;
   }
 
   reset() {
@@ -131,11 +159,18 @@ export class Player {
 
   // ------------------------------------------------------------------ update
 
-  update(dt, input, g) {
-    const { world, hud } = g;
+  update(dt, input, g0) {
+    const g = this.local ? g0 : quietGame(g0);
+    const { world } = g;
+    if (this.netDrive) this._applyNetPose();
     if (!this.alive) {
       this.mode = 'dead';
-      if (this.character) this.character.update(dt, { fwd: 0, side: 0, speed: 0, grounded: true, gliding: false, heading: this.heading, pitch: 0 });
+      this._poseCharacter(dt, 0, g);
+      return;
+    }
+    if (this.netDrive) {
+      if (this.mode !== 'bus') this._actions(dt, input, g);
+      this._poseCharacter(dt, Math.hypot(this.vel.x, this.vel.z), g);
       return;
     }
 
@@ -241,43 +276,117 @@ export class Player {
     this.surface = world.surface;
 
     // ---- actions
+    const hspeed = Math.hypot(v.x, v.z);
+    if (this.predictOnly) {
+      this._ghost(g);
+      this._prompt(g);
+      this._cosmeticFire(dt, input, g);
+      this._poseCharacter(dt, hspeed, g);
+      return;
+    }
     if (!this.airborneDrop) this._actions(dt, input, g);
     else {
-      hud.prompt(null);
-      if (g.structures) g.structures.setGhost(null);
+      g.hud.prompt(null);
+      if (this.local && g.structures) g.structures.setGhost(null);
     }
+    this._poseCharacter(dt, hspeed, g);
+    void inv;
+  }
 
-    // ---- character
-    const hspeed = Math.hypot(v.x, v.z);
+  _applyNetPose() {
+    const n = this.netPose;
+    if (!n) return;
+    this.pos.set(n.x, n.y, n.z);
+    this.vel.set(n.vx || 0, n.vy || 0, n.vz || 0);
+    this.heading = n.heading || 0;
+    this.pitch = n.pitch || 0;
+    // Once someone has left the bus, a late "bus" pose must not pull them back.
+    if (n.mode && !(this.mode !== 'bus' && n.mode === 'bus')) this.mode = n.mode;
+    if (n.ax != null) {
+      this.aimOrigin.set(n.ax, n.ay, n.az);
+      this.aimDir.set(n.dx || 0, n.dy || 0, n.dz || -1);
+      if (this.aimDir.lengthSq() < 1e-8) this.aimDir.set(0, 0, -1);
+      else this.aimDir.normalize();
+    }
+  }
+
+  _prompt(g) {
+    if (!this.local) return;
+    const rec = g.loot && g.loot.nearest ? g.loot.nearest(this.pos) : null;
+    if (!rec) {
+      g.hud.prompt(null);
+      return;
+    }
+    const verb = rec.kind === 'item' ? 'Pick up' : 'Open';
+    g.hud.prompt('[E] ' + verb + ' ' + (rec.label || ''));
+  }
+
+  _ghost(g) {
+    const st = g.structures;
+    if (!this.local || !st) return;
+    if (this.airborneDrop || !this.buildPiece) {
+      st.setGhost(null);
+      this.placement = null;
+      return;
+    }
+    this.placement = st.plan(this.buildPiece, this.pos, this.heading, this.pitch);
+    st.setGhost(this.placement, this.buildMat);
+  }
+
+  /** Instant muzzle flash on a client. The host owns ammo, damage and the real shot. */
+  _cosmeticFire(dt, input, g) {
+    this.cooldown -= dt;
+    const it = this._gun();
+    const want = input.clicked[0] || input.buttons[0];
+    if (!want || !it || this.buildPiece || this.airborneDrop) return;
+    const w = WEAPONS[it.id];
+    const pull = w.auto ? input.buttons[0] : input.clicked[0];
+    if (!pull || this.cooldown > 0) return;
+    if ((it.mag || 0) <= 0) {
+      g.sfx.play('empty_click', { volume: 0.5 });
+      this.cooldown = 0.3;
+      return;
+    }
+    this.cooldown = 1 / w.rate;
+    if (this.character) {
+      this.character.fire();
+      this.character.muzzle(_v);
+      if (g.fx) g.fx.muzzleFlash(_v, this.aimDir, { scale: w.id === 'shotgun' ? 1.4 : 1 });
+    }
+    g.sfx.play(w.sound, { volume: 0.85 });
+  }
+
+  _poseCharacter(dt, hspeed, g) {
+    const p = this.pos;
+    const v = this.vel;
+    const sh = Math.sin(this.heading);
+    const ch = Math.cos(this.heading);
     if (this.character) {
       const c = this.character;
-      if (this.emoting && (hspeed > 0.5 || input.buttons[0])) {
+      if (this.emoting && hspeed > 0.5) {
         this.emoting = false;
         c.emote(false);
       }
       c.root.position.copy(p);
-      c.root.visible = !(this.ads && this._gun() && this._gun().id === 'sniper');
+      c.root.visible = this.mode !== 'bus' && !(this.ads && this._gun() && this._gun().id === 'sniper');
       c.update(dt, {
-        fwd: hspeed > 0.1 ? (v.x * sh - v.z * ch) / hspeed : 0,
-        side: hspeed > 0.1 ? (v.x * ch + v.z * sh) / hspeed : 0,
+        fwd: hspeed > 0.1 ? (v.x * sh - v.z * ch) / Math.max(0.1, hspeed) : 0,
+        side: hspeed > 0.1 ? (v.x * ch + v.z * sh) / Math.max(0.1, hspeed) : 0,
         speed: hspeed,
-        grounded: this.grounded || this.mode === 'ground',
+        grounded: this.grounded || this.mode === 'ground' || this.mode === 'dead',
         gliding: this.mode === 'glide',
         heading: this.heading,
         pitch: this.pitch,
       });
     }
-
-    // ---- footsteps
-    if (this.grounded && hspeed > 2 && !this.crouching) {
+    if (this.local && this.grounded && hspeed > 2 && !this.crouching && this.alive) {
       this.stepT -= dt * (hspeed / PLAYER.runSpeed);
       if (this.stepT <= 0) {
         this.stepT = 0.36;
-        const s = this.surface === 'build' ? 'wood' : world.roadAt(p.x, p.z) ? 'road' : 'grass';
+        const s = this.surface === 'build' ? 'wood' : g.world.roadAt(p.x, p.z) ? 'road' : 'grass';
         g.sfx.play('footstep', { surface: s, volume: 0.45 });
       }
     }
-    void inv;
   }
 
   _land(vy, g) {
@@ -288,7 +397,7 @@ export class Player {
       if (g.onPlayerLanded) g.onPlayerLanded(this);
     } else if (vy < -8) {
       g.sfx.play('land', { volume: clamp(-vy / 20, 0.3, 1) });
-      if (vy < -22 && !this.god) g.combat.applyDamage(this, (-vy - 22) * 4, { fall: true, source: null, storm: true });
+      if (vy < -22 && !this.god && !this.predictOnly) g.combat.applyDamage(this, (-vy - 22) * 4, { fall: true, source: null, storm: true });
     }
   }
 
@@ -391,7 +500,7 @@ export class Player {
     if (this.buildPiece) {
       this._buildMode(dt, lmb, lmbClick, g);
     } else {
-      if (g.structures) g.structures.setGhost(null);
+      if (this.local && g.structures) g.structures.setGhost(null);
       this.placement = null;
       if (cur && cur.type === 'weapon') {
         const w = WEAPONS[cur.id];
@@ -575,7 +684,7 @@ export class Player {
     const st = g.structures;
     if (!st || !st.plan) return;
     this.placement = st.plan(this.buildPiece, this.pos, this.heading, this.pitch);
-    st.setGhost(this.placement, this.buildMat);
+    if (this.local) st.setGhost(this.placement, this.buildMat);
     if ((lmbClick || (lmb && this.placeCooldown <= 0)) && this.placement) this.tryPlace(g);
   }
 

@@ -280,8 +280,9 @@ export class Loot {
 
   // -------------------------------------------------------------- records
 
-  _add(kind, x, y, z, yaw, item) {
-    const id = this._nextId++;
+  _add(kind, x, y, z, yaw, item, forcedId = 0) {
+    const id = forcedId || this._nextId++;
+    if (id >= this._nextId) this._nextId = id + 1;
     const rec = {
       id, kind, x, y, z, yaw, item: item || null,
       rarity: kind === 'item' ? itemRarity(item) : kind === 'chest' ? 'legendary' : 'common',
@@ -595,6 +596,31 @@ export class Loot {
     const py = position.y || 0;
     const rec = this._spawnItem(item, position.x, py + 0.8, position.z, position.x + Math.cos(a) * d, position.z + Math.sin(a) * d, py);
     return rec.id;
+  }
+
+  /** Host snapshot: every live record. Items are plain JSON. */
+  exportNet() {
+    const out = [];
+    for (const r of this.records) out.push([r.id, r.kind, Math.round(r.x * 10), Math.round(r.y * 10), Math.round(r.z * 10), r.opened ? 1 : 0, r.item || 0]);
+    return out;
+  }
+
+  /** Client: add, open, or remove records so the ground matches the host. */
+  importNet(rows) {
+    if (!rows) return;
+    const seen = new Set();
+    for (const row of rows) {
+      const [id, kind, x, y, z, opened, item] = row;
+      seen.add(id);
+      let rec = this.byId.get(id);
+      if (!rec) rec = this._add(kind, x / 10, y / 10, z / 10, 0, item || null, id);
+      if (opened && !rec.opened) {
+        rec.opened = true;
+        this._fxOff(rec);
+        this._blipsDirty = true;
+      }
+    }
+    for (const rec of this.records.slice()) if (!seen.has(rec.id)) this._remove(rec);
   }
 
   // -------------------------------------------------------------- queries

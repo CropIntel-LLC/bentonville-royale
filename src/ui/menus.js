@@ -61,6 +61,7 @@ export function createMenus(root, opts = {}) {
      </div>
      <div class="mn-stack">
        <button class="mn-btn mn-btn-hero" data-act="play">${icon('play')}<span>PLAY</span></button>
+       <button class="mn-btn" data-act="friends">${icon('people')}<span>WITH FRIENDS</span></button>
        <button class="mn-btn" data-act="settings">${icon('gear')}<span>SETTINGS</span></button>
      </div>
      <div class="mn-controls">
@@ -91,6 +92,42 @@ export function createMenus(root, opts = {}) {
      </div>`
   );
   wrap.appendChild(settingsEl);
+
+  const NAME_KEY = 'bentonville-royale.playerName';
+  const friends = el(
+    'section',
+    'mn-screen mn-friends',
+    `<div class="mn-card">
+       <h2 class="mn-h br-ol">WITH FRIENDS</h2>
+       <label class="mn-row"><span>Your name</span><input class="mn-field" data-ref="name" maxlength="16" autocomplete="nickname"></label>
+       <button class="mn-btn mn-btn-hero" data-act="host">${icon('people')}<span>HOST A MATCH</span></button>
+       <label class="mn-row"><span>Room code</span><input class="mn-field mn-code-input" data-ref="code" maxlength="8" autocapitalize="characters" spellcheck="false" placeholder="BR4K2M"></label>
+       <button class="mn-btn" data-act="join"><span>JOIN</span></button>
+       <p class="mn-note" data-ref="note"></p>
+       <button class="mn-btn mn-btn-small" data-act="back">${icon('back')}<span>BACK</span></button>
+     </div>`
+  );
+  wrap.appendChild(friends);
+  const F = {};
+  friends.querySelectorAll('[data-ref]').forEach((e) => (F[e.dataset.ref] = e));
+
+  const lobby = el(
+    'section',
+    'mn-screen mn-lobby',
+    `<div class="mn-card">
+       <h2 class="mn-h br-ol">LOBBY</h2>
+       <div class="mn-room br-ol" data-ref="code">------</div>
+       <p class="mn-note" data-ref="status"></p>
+       <ul class="mn-roster" data-ref="roster"></ul>
+       <p class="mn-note mn-error" data-ref="error"></p>
+       <button class="mn-btn mn-btn-hero" data-act="lobby-start">${icon('play')}<span>START MATCH</span></button>
+       <button class="mn-btn mn-btn-small" data-act="copy"><span>COPY CODE</span></button>
+       <button class="mn-btn mn-btn-small" data-act="lobby-back">${icon('back')}<span>BACK</span></button>
+     </div>`
+  );
+  wrap.appendChild(lobby);
+  const B = {};
+  lobby.querySelectorAll('[data-ref]').forEach((e) => (B[e.dataset.ref] = e));
 
   // ---------------------------------------------------------------- loading
   const loading = el(
@@ -156,7 +193,7 @@ export function createMenus(root, opts = {}) {
   const D = {};
   banner.querySelectorAll('[data-ref]').forEach((e) => (D[e.dataset.ref] = e));
 
-  const screens = [title, settingsEl, loading, pause, result];
+  const screens = [title, settingsEl, friends, lobby, loading, pause, result];
   let settingsFrom = 'title';
   let current = null;
 
@@ -213,7 +250,17 @@ export function createMenus(root, opts = {}) {
       'click',
       click(() => {
         if (act === 'play') opts.onPlay && opts.onPlay();
-        else if (act === 'settings') api.showSettings(current === pause ? 'pause' : 'title');
+        else if (act === 'friends') api.showFriends();
+        else if (act === 'host') opts.onHost && opts.onHost(F.name.value);
+        else if (act === 'join') opts.onJoin && opts.onJoin(F.code.value, F.name.value);
+        else if (act === 'lobby-start') opts.onLobbyStart && opts.onLobbyStart();
+        else if (act === 'copy') {
+          const code = B.code.textContent || '';
+          if (navigator.clipboard && code && code !== '------') navigator.clipboard.writeText(code).catch(() => {});
+        } else if (act === 'lobby-back') {
+          if (opts.onLobbyLeave) opts.onLobbyLeave();
+          api.showTitle();
+        } else if (act === 'settings') api.showSettings(current === pause ? 'pause' : current === friends || current === lobby ? 'title' : 'title');
         else if (act === 'back') settingsFrom === 'pause' ? api.showPause() : api.showTitle();
         else if (act === 'resume') opts.onResume && opts.onResume();
         else if (act === 'leave') opts.onLeave && opts.onLeave();
@@ -231,11 +278,35 @@ export function createMenus(root, opts = {}) {
   const api = {
     el: wrap,
     get current() {
-      return current === title ? 'title' : current === settingsEl ? 'settings' : current === loading ? 'loading' : current === pause ? 'pause' : current === result ? 'result' : null;
+      return current === title ? 'title' : current === settingsEl ? 'settings' : current === friends ? 'friends' : current === lobby ? 'lobby' : current === loading ? 'loading' : current === pause ? 'pause' : current === result ? 'result' : null;
     },
     showTitle() {
       api.showDropBanner(false);
       show(title, true);
+    },
+    showFriends() {
+      F.name.value = localStorage.getItem(NAME_KEY) || '';
+      F.note.textContent = 'The host runs the match. Everyone else follows.';
+      show(friends, true);
+    },
+    showLobby(info = {}) {
+      const code = info.code || '------';
+      B.code.textContent = code;
+      B.status.textContent = info.status || '';
+      B.error.textContent = info.error || '';
+      B.roster.replaceChildren();
+      for (const p of info.players || []) {
+        const li = document.createElement('li');
+        li.textContent = p.host ? p.name + ' · host' : p.name;
+        B.roster.appendChild(li);
+      }
+      lobby.querySelector('[data-act="lobby-start"]').hidden = info.role !== 'host';
+      lobby.querySelector('[data-act="copy"]').hidden = info.role !== 'host';
+      show(lobby, true);
+    },
+    lobbyError(text) {
+      B.error.textContent = text || '';
+      if (current !== lobby && current !== friends) show(friends, true);
     },
     showSettings(from = 'title') {
       settingsFrom = from;
