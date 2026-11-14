@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atmosphere demo — Bentonville Royale</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #10131a; }
+  canvas { display: block; }
+  #panel {
+    position: fixed; top: 12px; left: 12px; width: 268px; box-sizing: border-box;
+    padding: 12px 14px 10px; border-radius: 10px;
+    background: rgba(16, 19, 28, 0.82); color: #e8ecf5;
+    font: 12px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+    user-select: none;
+  }
+  #panel h1 { margin: 0 0 8px; font-size: 13px; font-weight: 650; letter-spacing: 0.02em; }
+  #panel .row { display: flex; align-items: center; gap: 6px; margin: 6px 0; flex-wrap: wrap; }
+  #panel .label { width: 62px; flex: none; color: #9aa6bd; }
+  #panel button {
+    font: inherit; color: inherit; cursor: pointer; padding: 3px 8px; border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.06);
+  }
+  #panel button:hover { background: rgba(255, 255, 255, 0.14); }
+  #panel button.on { background: #6a4be0; border-color: #8f76ff; }
+  #panel input[type=range] { flex: 1; min-width: 0; accent-color: #8f76ff; }
+  #panel output { width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+  #stats { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.12);
+    color: #b9c3d6; font-variant-numeric: tabular-nums; white-space: pre; }
+  #keys { margin-top: 6px; color: #7f8aa3; }
+  body.clean #panel { display: none; }
+</style>
+</head>
+<body>
+<div id="panel">
+  <h1>Atmosphere demo</h1>
+  <div class="row"><span class="label">Quality</span>
+    <button data-quality="low">1 Low</button>
+    <button data-quality="medium">2 Med</button>
+    <button data-quality="high">3 High</button>
+  </div>
+  <div class="row"><span class="label">View</span><span id="views" class="row" style="margin:0"></span></div>
+  <div class="row"><span class="label">Storm r</span>
+    <input id="radius" type="range" min="60" max="2600" step="10" value="1500"><output id="radiusOut"></output></div>
+  <div class="row"><span class="label">Intensity</span>
+    <input id="intensity" type="range" min="0" max="1" step="0.01" value="0"><output id="intensityOut"></output></div>
+  <div class="row"><span class="label">Options</span>
+    <button id="auto">I Auto intensity</button>
+    <button id="shrink">K Shrink</button>
+    <button id="walk">L Walk focus</button>
+  </div>
+  <div id="stats"></div>
+  <div id="keys">Drag orbit · wheel zoom · WASD move · Q/E down/up<br>Arrows move storm · [ ] radius · , . intensity · H hide panel</div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Atmosphere } from './Atmosphere.js';
+
+const params = new URLSearchParams(location.search);
+if (params.has('clean')) document.body.classList.add('clean');
+
+/* ---- renderer / camera (as the game lead creates them) ------------------------------ */
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.3, 3000);
+
+const atmosphere = new Atmosphere({ scene, renderer, camera, quality: params.get('quality') || 'medium' });
+
+/* ---- test town ---------------------------------------------------------------------- */
+function rng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const rand = rng(20261114);
+
+const PITCH = 70; // one city block incl. road
+const ROAD = 14;
+
+// ground: 4 km x 5.2 km, block pattern (asphalt roads, pale sidewalks, grass lots)
+{
+  const size = 512;
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const g = c.getContext('2d');
+  const px = (m) => (m / PITCH) * size;
+  g.fillStyle = '#5b6068'; g.fillRect(0, 0, size, size);                       // asphalt
+  g.fillStyle = '#c9c6bb'; g.fillRect(px(ROAD / 2), px(ROAD / 2), px(PITCH - ROAD), px(PITCH - ROAD)); // sidewalk
+  g.fillStyle = '#7fb564'; g.fillRect(px(ROAD / 2 + 2.5), px(ROAD / 2 + 2.5), px(PITCH - ROAD - 5), px(PITCH - ROAD - 5)); // lot
+  g.fillStyle = '#e9e4c8';                                                      // lane dashes
+  for (let i = 0; i < 4; i++) { // centre-line dashes straddle the tile edge (= road centre)
+    const a = px(ROAD + 6 + i * 12), len = px(5), half = px(0.3);
+    g.fillRect(0, a, half, len); g.fillRect(size - half, a, half, len);
+    g.fillRect(a, 0, len, half); g.fillRect(a, size - half, len, half);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(4060 / PITCH, 5180 / PITCH);
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(4060, 5180),
+    new THREE.MeshStandardMaterial({ map: tex, roughness: 1, metalness: 0 }),
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+}
+
+// buildings: one instanced box per block, 3-40 m tall, flat colours
+const BUILDING_COLORS = [0xe8dcc4, 0xd9b48f, 0xc96f53, 0xf2efe6, 0x9fb7c9, 0xb9c3a0, 0xe7c66b, 0x8f9aa8, 0xd98a6a, 0xf4d9b0, 0x7fa3b8, 0xc2a3c9];
+const buildings = [];
+{
+  const nx = Math.floor(3600 / PITCH), nz = Math.floor(5000 / PITCH);
+  for (let ix = 0; ix < nx; ix++) {
+    for (let iz = 0; iz < nz; iz++) {
+      if (rand() < 0.12) continue; // empty lot / park
+      const cx = (ix - Math.floor(nx / 2) + 0.5) * PITCH, cz = (iz - Math.floor(nz / 2) + 0.5) * PITCH; // roads on multiples of PITCH
+      const downtown = Math.exp(-(cx * cx + cz * cz) / (700 * 700));
+      let h = 3 + rand() * 7;
+      if (rand() < 0.25 + 0.4 * downtown) h = 9 + rand() * 12;
+      if (rand() < 0.04 + 0.22 * downtown) h = 22 + rand() * 18;
+      const w = 16 + rand() * 30, d = 16 + rand() * 30;
+      const max = PITCH - ROAD - 8;
+      const ox = (rand() - 0.5) * (max - Math.min(w, max)), oz = (rand() - 0.5) * (max - Math.min(d, max));
+      buildings.push({ x: cx + ox, z: cz + oz, w: Math.min(w, max), d: Math.min(d, max), h, color: BUILDING_COLORS[Math.floor(rand() * BUILDING_COLORS.length)] });
+    }
+  }
+  const mesh = new THREE.InstancedMesh(
+    new THREE.BoxGeometry(1, 1, 1),
+    new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0 }),
+    buildings.length,
+  );
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3(), col = new THREE.Color();
+  buildings.forEach((b, i) => {
+    m.compose(p.set(b.x, b.h / 2, b.z), q, s.set(b.w, b.h, b.d));
+    mesh.setMatrixAt(i, m);
+    mesh.setColorAt(i, col.set(b.color));
+  });
+  mesh.castShadow = mesh.receiveShadow = true;
+  mesh.frustumCulled = false;
+  scene.add(mesh);
+}
+
+// 1.8 m characters (capsules) + a few tree stand-ins near the street view
+const people = [];
+{
+  const geo = new THREE.CapsuleGeometry(0.36, 1.08, 6, 14);
+  const colors = [0xff7a3d, 0x3fa7ff, 0xffd23f, 0x4fd18b, 0xe85d9c, 0xffffff, 0x8f76ff, 0x30c5c5];
+  const spots = [[0, 0], [2.2, -3], [-3.1, -7.5], [4.5, -14], [-1.5, -22], [6, 4], [-5, 2.5], [1, -34]];
+  spots.forEach(([x, z], i) => {
+    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: colors[i % colors.length], roughness: 0.7 }));
+    mesh.castShadow = mesh.receiveShadow = true;
+    scene.add(mesh);
+    people.push({ mesh, x, z });
+  });
+  const trunk = new THREE.CylinderGeometry(0.22, 0.3, 2.2, 6);
+  const crown = new THREE.IcosahedronGeometry(2.1, 0);
+  const trunkMat = new THREE.MeshLambertMaterial({ color: 0x7a5a3c });
+  const crownMat = new THREE.MeshLambertMaterial({ color: 0x4f9a4a, flatShading: true });
+  for (let i = 0; i < 14; i++) {
+    const side = i % 2 ? 1 : -1;
+    const t = new THREE.Group();
+    const a = new THREE.Mesh(trunk, trunkMat); a.position.y = 1.1;
+    const b = new THREE.Mesh(crown, crownMat); b.position.y = 3.6; b.scale.y = 1.15; b.rotation.y = i;
+    a.castShadow = b.castShadow = a.receiveShadow = b.receiveShadow = true;
+    t.add(a, b);
+    t.userData.offset = [side * 8.5, -Math.floor(i / 2) * 11 + 6];
+    scene.add(t);
+    people.push({ mesh: t, x: t.userData.offset[0], z: t.userData.offset[1], ground: true });
+  }
+}
+
+/* ---- demo state --------------------------------------------------------------------- */
+// Street origin: the centre of a road intersection near the middle of town.
+const STREET = new THREE.Vector3(0, 0, 0);
+for (const p of people) p.mesh.position.set(STREET.x + p.x, p.ground ? 0 : 0.9, STREET.z + p.z);
+
+const storm = { cx: 0, cz: 0, r: 1500 };
+const state = { intensity: 0, auto: false, shrink: false, walk: false, quality: atmosphere.quality };
+const focus = new THREE.Vector3();
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = false;
+controls.maxPolarAngle = Math.PI - 0.02; // allow looking up at the sky
+controls.minDistance = 1;
+controls.maxDistance = 2500;
+
+const tallest = buildings.filter((b) => Math.hypot(b.x, b.z) < 500).sort((a, b) => b.h - a.h)[0];
+
+// name -> { eye, target, storm, intensity }
+const VIEWS = {
+  // third-person at street level, safe zone
+  street: { eye: [1.6, 2.6, 5.8], target: [0.3, 1.5, -6], storm: [0, 0, 1500], intensity: 0 },
+  // on top of the tallest downtown building, looking across town to the horizon
+  rooftop: () => ({ eye: [tallest.x, tallest.h + 2.2, tallest.z], target: [tallest.x - 300, tallest.h - 40, tallest.z - 900], storm: [0, 0, 1900], intensity: 0 }),
+  // wall 1.5 km away: thin band on the horizon, seen down a street
+  'far-wall': { eye: [0, 7, 30], target: [0, 9, -400], storm: [0, 0, 1500], intensity: 0 },
+  // elevated look at a medium-distance wall
+  'mid-wall': { eye: [0, 26, 60], target: [0, 30, -400], storm: [0, 0, 520], intensity: 0 },
+  // standing in the safe zone right next to the wall
+  'near-wall': { eye: [3.5, 2.4, -175], target: [-2, 9, -230], storm: [0, 0, 210], intensity: 0 },
+  // looking along the wall from just inside the safe zone
+  'along-wall': { eye: [0, 2.2, -198], target: [60, 14, -212], storm: [0, 0, 210], intensity: 0.0 },
+  // 60 m outside the wall, looking back at the safe zone through it
+  'inside-storm': { eye: [4, 2.6, -272], target: [0, 6, -180], storm: [0, 0, 210], intensity: 1 },
+  // deep in the storm, looking away from the wall across town
+  'storm-deep': { eye: [1.6, 2.6, 5.8], target: [0.3, 1.5, -6], storm: [900, 900, 300], intensity: 1 },
+  // half-way mood, rooftop
+  'storm-half': () => ({ eye: [tallest.x, tallest.h + 2.2, tallest.z], target: [tallest.x - 300, tallest.h - 40, tallest.z - 900], storm: [0, 0, 1900], intensity: 0.5 }),
+  // the sky: sun disc + clouds
+  sky: { eye: [0, 2, 0], target: [-30, 44, 60], storm: [0, 0, 1500], intensity: 0 },
+  // high aerial, whole town + storm circle
+  aerial: { eye: [-700, 520, 1300], target: [0, 0, 0], storm: [0, 0, 800], intensity: 0 },
+  // shadow close-up on characters
+  closeup: { eye: [5.5, 3.2, 3.5], target: [0.6, 0.9, -2.5], storm: [0, 0, 1500], intensity: 0 },
+};
+
+/** Jump to a named view. Returns the view names when called with an unknown name. */
+function setView(name, { snap = true } = {}) {
+  let v = VIEWS[name];
+  if (!v) return Object.keys(VIEWS);
+  if (typeof v === 'function') v = v();
+  camera.position.fromArray(v.eye);
+  controls.target.fromArray(v.target);
+  controls.update();
+  storm.cx = v.storm[0]; storm.cz = v.storm[1]; storm.r = v.storm[2];
+  state.intensity = v.intensity;
+  state.auto = false; state.shrink = false; state.walk = false;
+  focusFromCamera();
+  atmosphere.setStorm(storm);
+  // a long zero-motion step makes the internal smoothing settle at once (for scripted captures)
+  if (snap) atmosphere.update(30, { focus, stormIntensity01: state.intensity });
+  syncUI();
+  return name;
+}
+
+// The "player" the shadows follow: a point a few metres in front of the camera, on the ground.
+const _fwd = new THREE.Vector3();
+let walkT = 0;
+function focusFromCamera() {
+  camera.getWorldDirection(_fwd);
+  _fwd.y = 0;
+  if (_fwd.lengthSq() < 1e-6) _fwd.set(0, 0, -1);
+  _fwd.normalize();
+  focus.copy(camera.position).addScaledVector(_fwd, 6);
+  focus.y = 0;
+}
+
+/* ---- UI ----------------------------------------------------------------------------- */
+const $ = (id) => document.getElementById(id);
+const viewBox = $('views');
+for (const name of Object.keys(VIEWS)) {
+  const b = document.createElement('button');
+  b.textContent = name;
+  b.onclick = () => setView(name, { snap: false });
+  viewBox.appendChild(b);
+}
+function syncUI() {
+  for (const b of document.querySelectorAll('[data-quality]')) b.classList.toggle('on', b.dataset.quality === atmosphere.quality);
+  $('radius').value = storm.r; $('radiusOut').textContent = Math.round(storm.r) + ' m';
+  $('intensity').value = state.intensity; $('intensityOut').textContent = state.intensity.toFixed(2);
+  $('auto').classList.toggle('on', state.auto);
+  $('shrink').classList.toggle('on', state.shrink);
+  $('walk').classList.toggle('on', state.walk);
+}
+function setQuality(q) { atmosphere.setQuality(q); syncUI(); }
+for (const b of document.querySelectorAll('[data-quality]')) b.onclick = () => setQuality(b.dataset.quality);
+$('radius').oninput = (e) => { storm.r = Number(e.target.value); syncUI(); };
+$('intensity').oninput = (e) => { state.intensity = Number(e.target.value); state.auto = false; syncUI(); };
+$('auto').onclick = () => { state.auto = !state.auto; syncUI(); };
+$('shrink').onclick = () => { state.shrink = !state.shrink; syncUI(); };
+$('walk').onclick = () => { state.walk = !state.walk; syncUI(); };
+
+const held = new Set();
+addEventListener('keydown', (e) => {
+  if (e.target instanceof HTMLInputElement) return;
+  held.add(e.code);
+  if (e.code === 'Digit1') setQuality('low');
+  if (e.code === 'Digit2') setQuality('medium');
+  if (e.code === 'Digit3') setQuality('high');
+  if (e.code === 'KeyI') { state.auto = !state.auto; syncUI(); }
+  if (e.code === 'KeyK') { state.shrink = !state.shrink; syncUI(); }
+  if (e.code === 'KeyL') { state.walk = !state.walk; syncUI(); }
+  if (e.code === 'KeyH') document.body.classList.toggle('clean');
+});
+addEventListener('keyup', (e) => held.delete(e.code));
+addEventListener('blur', () => held.clear());
+addEventListener('resize', () => {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+});
+
+const _move = new THREE.Vector3(), _side = new THREE.Vector3();
+function handleKeys(dt) {
+  // fly: move camera + orbit target together
+  const speed = (held.has('ShiftLeft') ? 120 : 24) * dt;
+  camera.getWorldDirection(_fwd); _fwd.y = 0; _fwd.normalize();
+  _side.set(-_fwd.z, 0, _fwd.x);
+  _move.set(0, 0, 0);
+  if (held.has('KeyW')) _move.add(_fwd);
+  if (held.has('KeyS')) _move.sub(_fwd);
+  if (held.has('KeyD')) _move.add(_side);
+  if (held.has('KeyA')) _move.sub(_side);
+  if (held.has('KeyE')) _move.y += 1;
+  if (held.has('KeyQ')) _move.y -= 1;
+  if (_move.lengthSq() > 0) {
+    _move.multiplyScalar(speed);
+    camera.position.add(_move); controls.target.add(_move);
+    if (camera.position.y < 0.5) { controls.target.y += 0.5 - camera.position.y; camera.position.y = 0.5; }
+  }
+  // storm circle
+  const sm = 220 * dt;
+  let dirty = false;
+  if (held.has('ArrowLeft')) { storm.cx -= sm; dirty = true; }
+  if (held.has('ArrowRight')) { storm.cx += sm; dirty = true; }
+  if (held.has('ArrowUp')) { storm.cz -= sm; dirty = true; }
+  if (held.has('ArrowDown')) { storm.cz += sm; dirty = true; }
+  if (held.has('BracketLeft')) { storm.r = Math.max(60, storm.r - 260 * dt); dirty = true; }
+  if (held.has('BracketRight')) { storm.r = Math.min(2600, storm.r + 260 * dt); dirty = true; }
+  if (held.has('Comma')) { state.intensity = Math.max(0, state.intensity - 0.7 * dt); state.auto = false; dirty = true; }
+  if (held.has('Period')) { state.intensity = Math.min(1, state.intensity + 0.7 * dt); state.auto = false; dirty = true; }
+  if (dirty) syncUI();
+}
+
+/* ---- loop --------------------------------------------------------------------------- */
+const statsEl = $('stats');
+const perf = { frames: 0, frameMs: 0, cpuMs: 0, last: performance.now(), accT: 0 };
+let measuring = null;
+let prev = performance.now();
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min((now - prev) / 1000, 0.1);
+  const frameMs = now - prev;
+  prev = now;
+
+  handleKeys(dt);
+  controls.update();
+
+  if (state.shrink) { storm.r = Math.max(60, storm.r - 18 * dt); syncUI(); }
+  focusFromCamera();
+  if (state.walk) { walkT += dt; focus.x += Math.sin(walkT * 0.5) * 20; focus.z += walkT * 0; }
+  if (state.auto) {
+    // what the game would feed in: 0 inside the circle, ramping to 1 by 60 m outside
+    const d = Math.hypot(camera.position.x - storm.cx, camera.position.z - storm.cz) - storm.r;
+    state.intensity = Math.min(1, Math.max(0, d / 60));
+    $('intensity').value = state.intensity; $('intensityOut').textContent = state.intensity.toFixed(2);
+  }
+
+  const t0 = performance.now();
+  atmosphere.setStorm(storm);
+  atmosphere.update(dt, { focus, stormIntensity01: state.intensity });
+  renderer.render(scene, camera);
+  const cpu = performance.now() - t0;
+
+  perf.frames++; perf.frameMs += frameMs; perf.cpuMs += cpu;
+  if (measuring) {
+    measuring.frames++; measuring.frameMs += frameMs; measuring.cpuMs += cpu;
+    measuring.maxFrameMs = Math.max(measuring.maxFrameMs, frameMs);
+    if (measuring.frames >= measuring.n) {
+      const m = measuring; measuring = null;
+      m.resolve({
+        frames: m.frames,
+        avgFrameMs: +(m.frameMs / m.frames).toFixed(3),
+        maxFrameMs: +m.maxFrameMs.toFixed(2),
+        avgCpuMsUpdatePlusRender: +(m.cpuMs / m.frames).toFixed(3),
+        drawCalls: renderer.info.render.calls,
+        triangles: renderer.info.render.triangles,
+        programs: renderer.info.programs.length,
+        geometries: renderer.info.memory.geometries,
+        textures: renderer.info.memory.textures,
+        quality: atmosphere.quality,
+      });
+    }
+  }
+  if (now - perf.last > 500) {
+    statsEl.textContent =
+      `${(perf.frameMs / perf.frames).toFixed(2)} ms/frame   cpu ${(perf.cpuMs / perf.frames).toFixed(2)} ms\n` +
+      `draw calls ${renderer.info.render.calls}   tris ${(renderer.info.render.triangles / 1000).toFixed(1)}k\n` +
+      `storm level ${atmosphere.stormLevel.toFixed(2)}   quality ${atmosphere.quality}`;
+    perf.frames = 0; perf.frameMs = 0; perf.cpuMs = 0; perf.last = now;
+  }
+}
+
+/** Average over n frames. Resolves { avgFrameMs (rAF interval), avgCpuMsUpdatePlusRender, drawCalls, ... }. */
+function measure(n = 300) {
+  return new Promise((resolve) => { measuring = { n, frames: 0, frameMs: 0, cpuMs: 0, maxFrameMs: 0, resolve }; });
+}
+
+/**
+ * Un-throttled GPU-inclusive timing: renders n frames back to back and waits for the GPU
+ * with gl.finish() after each, so the number is not capped by vsync.
+ */
+function measureGpu(n = 200) {
+  const gl = renderer.getContext();
+  for (let i = 0; i < 5; i++) { renderer.render(scene, camera); gl.finish(); }
+  const t0 = performance.now();
+  for (let i = 0; i < n; i++) {
+    atmosphere.setStorm(storm);
+    atmosphere.update(1 / 60, { focus, stormIntensity01: state.intensity });
+    renderer.render(scene, camera);
+    gl.finish();
+  }
+  const px = new Uint8Array(4);
+  gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); // hard sync
+  return { frames: n, avgMsUnthrottled: +((performance.now() - t0) / n).toFixed(3), drawCalls: renderer.info.render.calls, triangles: renderer.info.render.triangles, quality: atmosphere.quality };
+}
+
+/**
+ * Shadow stability check: with the camera fixed, slide the focus by `step` metres `count`
+ * times and compare the rendered frames. With texel snapping the image only changes by the
+ * (static) per-pixel filter noise at shadow edges; returns the worst mean abs difference.
+ */
+function shadowStability(step = 0.37, count = 12) {
+  const gl = renderer.getContext();
+  const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+  const read = () => { const b = new Uint8Array(w * h * 4); gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, b); return b; };
+  const f = focus.clone();
+  atmosphere.update(0, { focus: f, stormIntensity01: state.intensity });
+  renderer.render(scene, camera);
+  const ref = read();
+  let worstMean = 0, worstMax = 0, changedMax = 0;
+  for (let i = 1; i <= count; i++) {
+    f.x += step; f.z += step * 0.61;
+    atmosphere.update(0, { focus: f, stormIntensity01: state.intensity });
+    renderer.render(scene, camera);
+    const cur = read();
+    let sum = 0, max = 0, changed = 0;
+    for (let k = 0; k < cur.length; k += 4) {
+      const d = Math.abs(cur[k] - ref[k]) + Math.abs(cur[k + 1] - ref[k + 1]) + Math.abs(cur[k + 2] - ref[k + 2]);
+      sum += d; if (d > max) max = d; if (d > 24) changed++;
+    }
+    worstMean = Math.max(worstMean, sum / (w * h * 3));
+    worstMax = Math.max(worstMax, max);
+    changedMax = Math.max(changedMax, changed / (w * h));
+  }
+  return { worstMeanAbsDiff: +worstMean.toFixed(4), worstPixelDiff: worstMax, worstChangedFraction: +changedMax.toFixed(5) };
+}
+
+window.__atmo = { atmosphere, scene, camera, renderer, controls, storm, state, focus, setView, setQuality, measure, measureGpu, shadowStability, views: Object.keys(VIEWS) };
+
+setView(params.get('view') || 'street');
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bentonville Royale</title>
+    <meta name="description" content="An original third-person building battle royale set in real Bentonville, Arkansas." />
+    <link rel="preload" href="/assets/fonts/LilitaOne-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/assets/fonts/Nunito-Variable.woff2" as="font" type="font/woff2" crossorigin />
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #15103a;
+      }
+      #game {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+        outline: none;
+      }
+      #ui-root {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+      }
+      #boot-error {
+        position: fixed;
+        inset: auto 16px 16px;
+        padding: 12px 16px;
+        border-radius: 12px;
+        background: #ff5d4a;
+        color: #fff;
+        font: 700 14px/1.3 system-ui, sans-serif;
+        display: none;
+        z-index: 100;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="game" tabindex="0"></canvas>
+    <div id="ui-root"></div>
+    <div id="boot-error" role="alert"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

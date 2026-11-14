@@ -8,4 +8,9 @@ tools/qa/out
 .DS_Store
 .env
 .env.*
+!.env.example
 *.pem
+
+# personal local music, never commit or deploy
+local-music/
+.vercel

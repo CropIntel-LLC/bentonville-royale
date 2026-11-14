@@ -2,6 +2,7 @@
 // All setters are safe to call every frame: each one compares against the
 // last value it rendered and only touches the DOM when something changed.
 
+import './hud.css';
 import { icon, hasIcon } from './icons.js';
 
 const BUILD_PIECES = [
@@ -24,6 +25,7 @@ const TOAST_MAX = 3;
 const TOAST_MS = 2400;
 const FLOAT_POOL = 28;
 const FLOAT_ICONS = { wood: 'wood', brick: 'brick', metal: 'metal', shield: 'shield' };
+const DEFAULT_LOCATION = 'BENTONVILLE, AR';
 
 const clamp01 = (v) => (v > 0 ? (v < 1 ? v : 1) : 0);
 const int = (v) => (Number.isFinite(v) ? Math.round(v) : 0);
@@ -102,7 +104,7 @@ function hudHTML() {
     </div>
     <div class="br-storm-phase"><span>PHASE</span><b class="br-ol" data-ref="stormPhase">1</b></div>
   </div>
-  <div class="br-retro-chip"><i></i>PLAY &#9654; SUMMER 2018</div>
+  <div class="br-loc">${icon('pin')}<span data-ref="loc">${DEFAULT_LOCATION}</span></div>
 </div>
 
 <div class="br-compass">
@@ -223,6 +225,7 @@ export function buildHud(root) {
   });
 
   const canAnimate = typeof hud.animate === 'function';
+  const motionQuery = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
   const timers = new Set();
   const later = (fn, ms) => {
     const id = setTimeout(() => {
@@ -242,7 +245,9 @@ export function buildHud(root) {
   window.addEventListener('resize', measure);
 
   const pop = (el, scale = 1.25, ms = 180) => {
-    if (canAnimate) el.animate([{ transform: `scale(${scale})` }, { transform: 'scale(1)' }], { duration: ms, easing: 'ease-out' });
+    // decorative only, so it is skipped entirely for reduced-motion users
+    if (!canAnimate || (motionQuery && motionQuery.matches)) return;
+    el.animate([{ transform: `scale(${scale})` }, { transform: 'scale(1)' }], { duration: ms, easing: 'ease-out' });
   };
 
   // ---- vitals --------------------------------------------------------------
@@ -263,7 +268,11 @@ export function buildHud(root) {
         fill.style.transform = t;
         ghost.style.transform = t;
         row.classList.toggle('is-zero', pct <= 0);
-        if (lowClass) row.classList.toggle('is-low', pct > 0 && pct <= 0.25);
+        if (lowClass) {
+          const low = pct > 0 && pct <= 0.25;
+          row.classList.toggle('is-low', low);
+          hud.classList.toggle('is-lowhp', low); // drives the pulsing edge vignette
+        }
         lastPct = pct;
       }
     };
@@ -707,6 +716,23 @@ export function buildHud(root) {
     r.emote.classList.toggle('is-on', v);
   }
 
+  let lastLocation = DEFAULT_LOCATION;
+  /** Text of the small location tag under the storm panel (e.g. a landmark name). null/'' restores the default. */
+  function setLocation(text) {
+    const t = text == null || text === '' ? DEFAULT_LOCATION : String(text);
+    if (t === lastLocation) return;
+    lastLocation = t;
+    r.loc.textContent = t;
+  }
+  let visible = true;
+  /** Hides / shows the whole HUD (e.g. while a menu screen is up). */
+  function setVisible(on) {
+    const v = !!on;
+    if (v === visible) return;
+    visible = v;
+    hud.classList.toggle('is-hidden', !v);
+  }
+
   // sensible first paint
   setHealth(100, 100);
   setShield(0, 100);
@@ -742,6 +768,8 @@ export function buildHud(root) {
     getFullMapCanvas: () => r.fullmapCanvas,
     showFullMap,
     setEmoteHint,
+    setLocation,
+    setVisible,
     /** Clears transient HUD bits (feed, toasts, prompt, announce) — used when leaving a match. */
     clearTransient() {
       r.feed.textContent = '';

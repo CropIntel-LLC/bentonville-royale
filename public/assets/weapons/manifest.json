@@ -1,317 +1,300 @@
 [
   {
     "file": "pickaxe.glb",
-    "bytes": 38460,
+    "bytes": 23020,
     "size": [
-      1.24,
-      1.725,
-      0.262
+      0.954,
+      1.6,
+      0.12
     ],
     "bboxMin": [
-      -0.62,
-      -0.433,
-      -0.131
+      -0.452,
+      -0.4,
+      -0.06
     ],
     "bboxMax": [
-      0.62,
-      1.292,
-      0.131
+      0.502,
+      1.2,
+      0.059
     ],
     "longAxis": "y",
-    "originNote": "two-handed double-bladed AXE used as pickaxe stand-in (no CC0 pickaxe reachable). Handle along Y, head at +Y top with blades along +/-X; origin on the handle 0.433 above its bottom end (grip point), centered in X/Z. About 2-3x larger than the blasters: scale ~0.4 to match",
+    "grip": [
+      0,
+      0,
+      0
+    ],
+    "head": [
+      0,
+      1.12,
+      0
+    ],
+    "originNote": "real pickaxe. Handle along +Y, head at the top with the picks along +/-X; origin on the handle 0.4 above its bottom end (grip point), centred in X/Z. Same frame as the old axe stand-in, so Character.js scale 0.62 still gives ~1 m.",
     "nodes": [
-      "axe_2handed"
+      "pickaxe"
     ],
-    "nodeBounds": {
-      "axe_2handed": {
-        "min": [
-          -0.62,
-          -0.433,
-          -0.131
-        ],
-        "max": [
-          0.62,
-          1.292,
-          0.131
-        ]
-      }
-    },
     "animations": [],
-    "texturesEmbedded": true,
-    "triangles": 508,
-    "source": "KayKit Adventurers: axe_2handed (gltf+bin+png packed into one glb)",
-    "license": "CC0-1.0"
-  },
-  {
-    "file": "pistol.glb",
-    "bytes": 46488,
-    "size": [
-      0.165,
-      0.338,
-      0.475
+    "texturesEmbedded": false,
+    "triangles": 396,
+    "materials": [
+      "Stone.001",
+      "DarkMetal.001",
+      "WoodDark.001"
     ],
-    "bboxMin": [
-      -0.082,
-      -0.167,
-      -0.238
-    ],
-    "bboxMax": [
-      0.082,
-      0.171,
-      0.238
-    ],
-    "longAxis": "z",
-    "barrelDirection": "-z",
-    "originNote": "origin at bounding-box center; muzzle toward -Z, grip below at +Z half (z~0..+0.24), up +Y",
-    "nodes": [
-      "blaster-c"
-    ],
-    "nodeBounds": {
-      "blaster-c": {
-        "min": [
-          -0.082,
-          -0.167,
-          -0.238
-        ],
-        "max": [
-          0.082,
-          0.171,
-          0.238
-        ]
-      }
-    },
-    "animations": [],
-    "texturesEmbedded": true,
-    "triangles": 388,
-    "source": "Kenney Blaster Kit: blaster-c",
+    "source": "CircuitZ: Pickaxe 1 (poly.pizza 88ZenT8TN0)",
     "license": "CC0-1.0"
   },
   {
     "file": "rifle.glb",
-    "bytes": 90680,
+    "bytes": 102824,
     "size": [
-      0.16,
-      0.371,
-      0.862
-    ],
-    "bboxMin": [
-      -0.08,
-      -0.185,
-      -0.431
-    ],
-    "bboxMax": [
       0.08,
-      0.185,
-      0.431
-    ],
-    "longAxis": "z",
-    "barrelDirection": "-z",
-    "originNote": "origin at bounding-box center (not at grip); barrel/muzzle toward -Z, stock toward +Z, up +Y; grip hangs below at roughly z=+0.0..+0.1",
-    "nodes": [
-      "blaster-p",
-      "magazine"
-    ],
-    "nodeBounds": {
-      "blaster-p": {
-        "min": [
-          -0.08,
-          -0.143,
-          -0.431
-        ],
-        "max": [
-          0.08,
-          0.185,
-          0.431
-        ]
-      },
-      "magazine": {
-        "min": [
-          -0.03,
-          -0.185,
-          -0.109
-        ],
-        "max": [
-          0.03,
-          -0.035,
-          0.041
-        ]
-      }
-    },
-    "animations": [],
-    "texturesEmbedded": true,
-    "triangles": 882,
-    "source": "Kenney Blaster Kit: blaster-p",
-    "license": "CC0-1.0"
-  },
-  {
-    "file": "shotgun.glb",
-    "bytes": 38636,
-    "size": [
-      0.165,
       0.275,
-      0.648
+      0.793
     ],
     "bboxMin": [
-      -0.082,
-      -0.137,
-      -0.324
+      -0.039,
+      -0.124,
+      -0.402
     ],
     "bboxMax": [
-      0.082,
-      0.137,
-      0.324
+      0.04,
+      0.15,
+      0.391
     ],
     "longAxis": "z",
     "barrelDirection": "-z",
-    "originNote": "origin at bounding-box center; barrel toward -Z, grip at +Z end (z~+0.1..+0.3) below center, up +Y",
-    "nodes": [
-      "blaster-h"
+    "grip": [
+      0,
+      -0.014,
+      0.152
     ],
-    "nodeBounds": {
-      "blaster-h": {
-        "min": [
-          -0.082,
-          -0.137,
-          -0.324
-        ],
-        "max": [
-          0.082,
-          0.137,
-          0.324
-        ]
-      }
-    },
+    "muzzle": [
+      0,
+      0.084,
+      -0.402
+    ],
+    "holderMuzzle": [
+      0,
+      0.142,
+      0.803
+    ],
+    "originNote": "origin is NOT the bbox centre: the grip sits at model (0, -0.014, 0.152) so Character's holder offset (0,0.02,0.22) x 1.45 lands it on the hand; barrel/muzzle toward -Z, up +Y. In-hand length 1.15 m.",
+    "nodes": [
+      "rifle"
+    ],
     "animations": [],
-    "texturesEmbedded": true,
-    "triangles": 296,
-    "source": "Kenney Blaster Kit: blaster-h",
+    "texturesEmbedded": false,
+    "triangles": 1930,
+    "materials": [
+      "Main",
+      "MainDark",
+      "MainLight"
+    ],
+    "source": "Quaternius Ultimate Guns Pack: Assault Rifle",
     "license": "CC0-1.0"
   },
   {
     "file": "smg.glb",
-    "bytes": 60856,
+    "bytes": 69504,
     "size": [
-      0.155,
-      0.362,
-      0.61
+      0.069,
+      0.268,
+      0.586
     ],
     "bboxMin": [
-      -0.078,
-      -0.178,
-      -0.305
+      -0.035,
+      -0.139,
+      -0.174
     ],
     "bboxMax": [
-      0.078,
-      0.184,
-      0.305
+      0.035,
+      0.129,
+      0.412
     ],
     "longAxis": "z",
     "barrelDirection": "-z",
-    "originNote": "origin at bounding-box center; muzzle toward -Z, up +Y; magazine child node below at z=-0.08",
-    "nodes": [
-      "blaster-j",
-      "magazine"
+    "grip": [
+      0,
+      -0.014,
+      0.152
     ],
-    "nodeBounds": {
-      "blaster-j": {
-        "min": [
-          -0.078,
-          -0.114,
-          -0.305
-        ],
-        "max": [
-          0.078,
-          0.184,
-          0.305
-        ]
-      },
-      "magazine": {
-        "min": [
-          -0.03,
-          -0.178,
-          -0.155
-        ],
-        "max": [
-          0.03,
-          -0.028,
-          -0.005
-        ]
-      }
-    },
+    "muzzle": [
+      0,
+      0.068,
+      -0.174
+    ],
+    "holderMuzzle": [
+      0,
+      0.119,
+      0.473
+    ],
+    "originNote": "origin is NOT the bbox centre: the grip sits at model (0, -0.014, 0.152) so Character's holder offset (0,0.02,0.22) x 1.45 lands it on the hand; barrel/muzzle toward -Z, up +Y. In-hand length 0.85 m.",
+    "nodes": [
+      "smg"
+    ],
     "animations": [],
-    "texturesEmbedded": true,
-    "triangles": 548,
-    "source": "Kenney Blaster Kit: blaster-j",
+    "texturesEmbedded": false,
+    "triangles": 1374,
+    "materials": [
+      "DarkMetal",
+      "Metal",
+      "Black",
+      "Grey"
+    ],
+    "source": "Quaternius Ultimate Guns Pack: Submachine Gun",
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "shotgun.glb",
+    "bytes": 53984,
+    "size": [
+      0.053,
+      0.135,
+      0.828
+    ],
+    "bboxMin": [
+      -0.026,
+      -0.095,
+      -0.465
+    ],
+    "bboxMax": [
+      0.026,
+      0.04,
+      0.363
+    ],
+    "longAxis": "z",
+    "barrelDirection": "-z",
+    "grip": [
+      0,
+      -0.014,
+      0.152
+    ],
+    "muzzle": [
+      0,
+      0.017,
+      -0.465
+    ],
+    "holderMuzzle": [
+      0,
+      0.044,
+      0.894
+    ],
+    "originNote": "origin is NOT the bbox centre: the grip sits at model (0, -0.014, 0.152) so Character's holder offset (0,0.02,0.22) x 1.45 lands it on the hand; barrel/muzzle toward -Z, up +Y. In-hand length 1.2 m.",
+    "nodes": [
+      "shotgun"
+    ],
+    "animations": [],
+    "texturesEmbedded": false,
+    "triangles": 978,
+    "materials": [
+      "Wood",
+      "Metal",
+      "DarkMetal",
+      "Black"
+    ],
+    "source": "Quaternius Ultimate Guns Pack: Shotgun",
     "license": "CC0-1.0"
   },
   {
     "file": "sniper.glb",
-    "bytes": 82644,
+    "bytes": 74996,
     "size": [
-      0.17,
-      0.445,
-      1.31
+      0.104,
+      0.224,
+      1.103
     ],
     "bboxMin": [
-      -0.085,
-      -0.222,
-      -0.655
+      -0.035,
+      -0.133,
+      -0.643
     ],
     "bboxMax": [
-      0.085,
-      0.222,
-      0.655
+      0.069,
+      0.091,
+      0.461
     ],
     "longAxis": "z",
     "barrelDirection": "-z",
-    "originNote": "origin at bounding-box center; long thin barrel toward -Z, stock toward +Z, up +Y; scope and magazine child nodes near z=+0.1",
-    "nodes": [
-      "blaster-f",
-      "scope",
-      "magazine"
+    "grip": [
+      0,
+      -0.014,
+      0.152
     ],
-    "nodeBounds": {
-      "blaster-f": {
-        "min": [
-          -0.085,
-          -0.142,
-          -0.655
-        ],
-        "max": [
-          0.085,
-          0.133,
-          0.655
-        ]
-      },
-      "scope": {
-        "min": [
-          -0.075,
-          0.033,
-          -0.045
-        ],
-        "max": [
-          0.075,
-          0.222,
-          0.235
-        ]
-      },
-      "magazine": {
-        "min": [
-          -0.03,
-          -0.222,
-          0.025
-        ],
-        "max": [
-          0.03,
-          -0.042,
-          0.175
-        ]
-      }
-    },
+    "muzzle": [
+      0,
+      0.026,
+      -0.643
+    ],
+    "holderMuzzle": [
+      0,
+      0.058,
+      1.152
+    ],
+    "originNote": "origin is NOT the bbox centre: the grip sits at model (0, -0.014, 0.152) so Character's holder offset (0,0.02,0.22) x 1.45 lands it on the hand; barrel/muzzle toward -Z, up +Y. In-hand length 1.6 m.",
+    "nodes": [
+      "sniper"
+    ],
     "animations": [],
-    "texturesEmbedded": true,
-    "triangles": 768,
-    "source": "Kenney Blaster Kit: blaster-f",
+    "texturesEmbedded": false,
+    "triangles": 1382,
+    "materials": [
+      "Black",
+      "Green",
+      "DarkMetal",
+      "Glass",
+      "Grey"
+    ],
+    "source": "Quaternius Ultimate Guns Pack: Sniper Rifle",
+    "license": "CC0-1.0"
+  },
+  {
+    "file": "pistol.glb",
+    "bytes": 52676,
+    "size": [
+      0.07,
+      0.204,
+      0.31
+    ],
+    "bboxMin": [
+      -0.035,
+      -0.095,
+      -0.096
+    ],
+    "bboxMax": [
+      0.035,
+      0.109,
+      0.214
+    ],
+    "longAxis": "z",
+    "barrelDirection": "-z",
+    "grip": [
+      0,
+      -0.014,
+      0.152
+    ],
+    "muzzle": [
+      0,
+      0.08,
+      -0.096
+    ],
+    "holderMuzzle": [
+      0,
+      0.135,
+      0.359
+    ],
+    "originNote": "origin is NOT the bbox centre: the grip sits at model (0, -0.014, 0.152) so Character's holder offset (0,0.02,0.22) x 1.45 lands it on the hand; barrel/muzzle toward -Z, up +Y. In-hand length 0.45 m.",
+    "nodes": [
+      "pistol"
+    ],
+    "animations": [],
+    "texturesEmbedded": false,
+    "triangles": 968,
+    "materials": [
+      "Metal",
+      "Black",
+      "LightMetal"
+    ],
+    "source": "Quaternius Ultimate Guns Pack: Pistol",
     "license": "CC0-1.0"
   }
 ]

@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Minimap demo — Bentonville Royale</title>
+<style>
+  @font-face { font-family: "Nunito"; src: url("/assets/fonts/Nunito-Variable.woff2") format("woff2"); font-weight: 200 1000; font-display: swap; }
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #10161d; color: #e8eef4; font: 600 14px/1.45 "Nunito", system-ui, sans-serif; }
+  main { display: flex; gap: 24px; padding: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .side { display: flex; flex-direction: column; gap: 14px; width: 260px; }
+  .tile { width: 220px; height: 220px; border-radius: 18px; border: 3px solid rgba(255,255,255,.85); box-shadow: 0 6px 18px rgba(0,0,0,.5); display: block; background: #1b2530; }
+  .cap { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #9fb0c0; margin: 0 0 6px; }
+  #full { width: min(660px, calc(100vh - 40px), 100%); aspect-ratio: 1; border-radius: 12px; display: block; background: #1b2530; cursor: crosshair; }
+  pre { margin: 0; padding: 10px 12px; background: #18212b; border-radius: 10px; font: 12px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; font-variant-numeric: tabular-nums; }
+  label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+  small { color: #8496a6; }
+</style>
+</head>
+<body>
+<main>
+  <div class="side">
+    <div><p class="cap">Mini — north-up</p><canvas id="mini" class="tile" width="320" height="320"></canvas></div>
+    <div><p class="cap">Mini — heading-up (rotate: true)</p><canvas id="miniRot" class="tile" width="320" height="320"></canvas></div>
+    <label><input type="checkbox" id="fullOpen" checked> full map open (M)</label>
+    <label><input type="checkbox" id="paused"> pause player (P)</label>
+    <pre id="stats">loading…</pre>
+    <small>Click the full map to drop a waypoint. <span id="attr"></span></small>
+  </div>
+  <div><p class="cap">Full map (1024 × 1024 backing store)</p><canvas id="full" width="1024" height="1024"></canvas></div>
+</main>
+<script type="module">
+import { Minimap } from './Minimap.js';
+
+const q = new URLSearchParams(location.search);
+const $ = (id) => document.getElementById(id);
+
+async function loadMap() {
+  if (!q.has('fixture')) {
+    try {
+      const res = await fetch('/data/bentonville-osm.json');
+      if (res.ok && /json/.test(res.headers.get('content-type') || '')) return { data: await res.json(), source: 'real' };
+    } catch { /* fall through to the fixture */ }
+  }
+  const res = await fetch(new URL('./minimap-fixture.json', import.meta.url));
+  return { data: await res.json(), source: 'fixture' };
+}
+
+const { data, source } = await loadMap();
+$('attr').textContent = source === 'real' ? 'Map data © OpenStreetMap contributors (ODbL).' : 'Synthetic fixture (not real map data).';
+
+const tCtor0 = performance.now();
+const mm = new Minimap({ mapData: data, miniCanvas: $('mini'), fullCanvas: $('full'), miniRadiusMeters: 140 });
+const ctorMs = performance.now() - tCtor0;
+const mmRot = new Minimap({ mapData: data, miniCanvas: $('miniRot'), fullCanvas: null, rotate: true });
+const tReady0 = performance.now();
+let readyMs = null;
+mm.whenReady.then(() => { readyMs = performance.now() - tReady0; });
+
+// longest main-thread block caused by anything on this page (render slices included)
+let longestTask = 0;
+try {
+  new PerformanceObserver((list) => { for (const e of list.getEntries()) longestTask = Math.max(longestTask, e.duration); }).observe({ entryTypes: ['longtask'] });
+} catch { /* not supported */ }
+
+// ---- fake game state -------------------------------------------------------
+const b = data.meta.bounds;
+const sq = (data.landmarks && data.landmarks.square) || { x: 0, z: 0 };
+const state = {
+  player: { x: sq.x, z: sq.z, heading: 0 },
+  storm: { cx: 0, cz: 0, r: 0, nextCx: 0, nextCz: 0, nextR: 0 },
+  fullOpen: q.get('full') !== '0',
+  marker: null,
+  blips: [],
+};
+$('fullOpen').checked = state.fullOpen;
+const cb = data.landmarks && data.landmarks.crystal_bridges;
+if (cb) state.marker = { x: cb.x, z: cb.z };
+
+let seed = 7;
+const rnd = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
+for (let i = 0; i < 28; i++) state.blips.push({ x: sq.x + (rnd() - 0.5) * 900, z: sq.z + (rnd() - 0.5) * 900, kind: i % 3 ? 'chest' : 'loot' });
+state.blips.push({ x: sq.x + 380, z: sq.z - 260, kind: 'drop' });
+const enemies = [0, 1, 2].map((i) => ({ x: 0, z: 0, kind: 'enemy', ph: i * 2.1 }));
+state.blips.push(...enemies);
+
+const circles = [
+  { cx: (b.minX + b.maxX) / 2, cz: (b.minZ + b.maxZ) / 2, r: 3000 },
+  { cx: sq.x + 250, cz: sq.z - 350, r: 1500 },
+  { cx: sq.x + 120, cz: sq.z - 60, r: 700 },
+  { cx: sq.x - 40, cz: sq.z + 60, r: 260 },
+  { cx: sq.x + 30, cz: sq.z + 20, r: 70 },
+];
+const WAIT = 5;
+const SHRINK = 11;
+function stormAt(t) {
+  const span = WAIT + SHRINK;
+  const total = span * (circles.length - 1);
+  const tt = t % (total + 6);
+  const i = Math.min(circles.length - 2, Math.floor(tt / span));
+  const f = Math.min(1, Math.max(0, (tt - i * span - WAIT) / SHRINK));
+  const a = circles[i];
+  const c = circles[i + 1];
+  const s = state.storm;
+  s.cx = a.cx + (c.cx - a.cx) * f;
+  s.cz = a.cz + (c.cz - a.cz) * f;
+  s.r = a.r + (c.r - a.r) * f;
+  s.nextCx = c.cx;
+  s.nextCz = c.cz;
+  s.nextR = c.r;
+}
+
+let paused = q.has('pause');
+let simT = Number(q.get('t')) || 0;
+const speed = Number(q.get('speed')) || 1;
+function pathAt(t, out) {
+  out.x = sq.x + 560 * Math.sin(t * 0.031) + 150 * Math.sin(t * 0.083 + 1);
+  out.z = sq.z + 480 * Math.sin(t * 0.047 + 0.6) + 120 * Math.cos(t * 0.071);
+}
+const tmpA = { x: 0, z: 0 };
+const tmpB = { x: 0, z: 0 };
+function step(dt) {
+  if (!paused) {
+    simT += dt * speed;
+    pathAt(simT, tmpA);
+    pathAt(simT + 0.05, tmpB);
+    state.player.x = tmpA.x;
+    state.player.z = tmpA.z;
+    // heading: 0 = north (-z), clockwise; forward = (sin h, -cos h)
+    state.player.heading = Math.atan2(tmpB.x - tmpA.x, -(tmpB.z - tmpA.z));
+    stormAt(simT);
+    for (const e of enemies) {
+      e.x = state.player.x + Math.cos(simT * 0.2 + e.ph) * (90 + e.ph * 60);
+      e.z = state.player.z + Math.sin(simT * 0.2 + e.ph) * (90 + e.ph * 60);
+    }
+  }
+}
+stormAt(simT);
+
+// ---- stats -----------------------------------------------------------------
+const stats = { frames: 0, sum: 0, max: 0, sumRot: 0 };
+function resetStats() { stats.frames = 0; stats.sum = 0; stats.max = 0; stats.sumRot = 0; }
+let last = performance.now();
+let lastPrint = 0;
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000);
+  last = now;
+  step(dt);
+  const t0 = performance.now();
+  mm.update(state);
+  const t1 = performance.now();
+  mmRot.update(state);
+  const t2 = performance.now();
+  stats.frames++;
+  stats.sum += t1 - t0;
+  stats.sumRot += t2 - t1;
+  if (t1 - t0 > stats.max) stats.max = t1 - t0;
+  if (now - lastPrint > 250) {
+    lastPrint = now;
+    $('stats').textContent =
+      `map: ${source}  (${data.buildings.length} bldg, ${data.roads.length} roads)\n` +
+      `ready: ${mm.ready}${readyMs != null ? ` after ${readyMs.toFixed(0)} ms` : ''}\n` +
+      `update() avg: ${(stats.sum / stats.frames).toFixed(3)} ms  (full ${state.fullOpen ? 'open' : 'closed'})\n` +
+      `update() max: ${stats.max.toFixed(2)} ms over ${stats.frames} frames\n` +
+      `heading-up avg: ${(stats.sumRot / stats.frames).toFixed(3)} ms\n` +
+      `longest task: ${longestTask.toFixed(0)} ms\n` +
+      `player: ${state.player.x.toFixed(0)}, ${state.player.z.toFixed(0)}  hdg ${((state.player.heading * 180 / Math.PI + 360) % 360).toFixed(0)}°\n` +
+      `storm r: ${state.storm.r.toFixed(0)} -> ${state.storm.nextR}`;
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ---- input -----------------------------------------------------------------
+function setFullOpen(v) { state.fullOpen = !!v; $('fullOpen').checked = state.fullOpen; resetStats(); }
+function setPaused(v) { paused = !!v; $('paused').checked = paused; }
+$('paused').checked = paused;
+$('fullOpen').addEventListener('change', (e) => setFullOpen(e.target.checked));
+$('paused').addEventListener('change', (e) => setPaused(e.target.checked));
+addEventListener('keydown', (e) => {
+  if (e.code === 'KeyM') setFullOpen(!state.fullOpen);
+  if (e.code === 'KeyP') setPaused(!paused);
+});
+$('full').addEventListener('click', (e) => {
+  const w = mm.fullClientToWorld(e.clientX, e.clientY);
+  state.marker = w.inBounds ? { x: w.x, z: w.z } : null;
+});
+
+// ---- scripted QA hooks -----------------------------------------------------
+window.__minimap = mm;
+window.__minimapRot = mmRot;
+window.__demo = {
+  state, source, data,
+  setFullOpen, setPaused, resetStats,
+  setPlayer(x, z, heading = state.player.heading) { setPaused(true); state.player.x = x; state.player.z = z; state.player.heading = heading; },
+  setStorm(s) { setPaused(true); state.storm = s; },
+  setTime(t) { simT = t; const p = paused; paused = false; step(0); paused = p; },
+  stats() {
+    return {
+      source, ready: mm.ready, readyMs, ctorMs, longestTask, fullOpen: state.fullOpen, frames: stats.frames,
+      avgUpdateMs: stats.frames ? stats.sum / stats.frames : 0, maxUpdateMs: stats.max,
+      avgRotUpdateMs: stats.frames ? stats.sumRot / stats.frames : 0,
+      tiles: mm._tiles.size, jobs: mm._jobs.length,
+    };
+  },
+  /** Cost of one forced redraw of each view, averaged over n back-to-back draws while the player moves. */
+  bench(n = 400) {
+    const out = {};
+    const p = state.player;
+    const keep = { x: p.x, z: p.z, h: p.heading, open: state.fullOpen };
+    const run = (inst, open) => {
+      state.fullOpen = open;
+      const t0 = performance.now();
+      for (let i = 0; i < n; i++) {
+        p.x = keep.x + Math.sin(i * 0.05) * 60;
+        p.z = keep.z + Math.cos(i * 0.05) * 60;
+        p.heading = i * 0.05;
+        inst._miniT = -1e9;
+        inst._fullT = -1e9;
+        inst.update(state);
+      }
+      return (performance.now() - t0) / n;
+    };
+    out.miniRedrawMs = run(mm, false);
+    out.miniPlusFullRedrawMs = run(mm, true);
+    out.rotMiniRedrawMs = run(mmRot, false);
+    // an update() that has nothing to do (inside the throttle window)
+    state.fullOpen = false;
+    mm.update(state);
+    const t0 = performance.now();
+    for (let i = 0; i < 20000; i++) mm.update(state);
+    out.idleUpdateMs = (performance.now() - t0) / 20000;
+    p.x = keep.x; p.z = keep.z; p.heading = keep.h; state.fullOpen = keep.open;
+    mm.invalidate();
+    return out;
+  },
+};
+</script>
+</body>
+</html>

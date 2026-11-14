@@ -1,0 +1,12 @@
+# never upload personal music or local-only material
+local-music/
+node_modules/
+dist/
+data-raw/
+_refs/
+_dl/
+tools/
+agents/
+.env
+.env.*
+*.pem

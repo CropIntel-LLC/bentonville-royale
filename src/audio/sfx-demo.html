@@ -1,0 +1,995 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sfx demo — Bentonville Royale</title>
+<style>
+  :root {
+    --bg: #12161c; --panel: #1a2029; --panel2: #222a35; --line: #2f3946;
+    --text: #dfe6ee; --dim: #8d9aaa; --accent: #ffb547; --good: #5fd08a; --bad: #ff6b5e; --warn: #ffd24a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { position: sticky; top: 0; z-index: 5; background: #0d1116ee; backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; }
+  header h1 { font-size: 16px; margin: 0 8px 0 0; font-weight: 650; }
+  main { padding: 16px; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) 360px; max-width: 1400px; margin: 0 auto; }
+  @media (max-width: 980px) { main { grid-template-columns: minmax(0, 1fr); } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); margin: 0 0 10px; font-weight: 600; }
+  .col { display: grid; gap: 16px; align-content: start; min-width: 0; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  button { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; cursor: pointer; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+  button:hover { border-color: var(--accent); }
+  button:active { background: #3a2f18; }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button.primary { background: var(--accent); color: #1b1304; border-color: var(--accent); font-family: inherit; font-weight: 600; }
+  button.on { background: #3a2f18; border-color: var(--accent); color: var(--accent); }
+  button.small { padding: 4px 7px; font-size: 11.5px; }
+  .variant { color: var(--dim); }
+  label { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); white-space: nowrap; }
+  label b { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; min-width: 2.6em; display: inline-block; }
+  input[type=range] { accent-color: var(--accent); width: 120px; }
+  select { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
+  .stat { font-variant-numeric: tabular-nums; color: var(--dim); }
+  .stat b { color: var(--text); font-weight: 600; }
+  #state.ok b { color: var(--good); } #state.no b { color: var(--warn); }
+  #meter { width: 150px; height: 10px; background: #0b0e12; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; position: relative; }
+  #meter i { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, var(--good), var(--warn) 75%, var(--bad)); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 6px 0; }
+  .looprow { display: grid; grid-template-columns: 110px auto 1fr; gap: 10px; align-items: center; margin: 6px 0; }
+  .note { color: var(--dim); font-size: 12px; margin: 6px 0 0; }
+  #pad { width: 100%; aspect-ratio: 1; display: block; border-radius: 6px; background: #0e1217; border: 1px solid var(--line); touch-action: none; cursor: crosshair; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 3px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  th { color: var(--dim); font-weight: 600; position: sticky; top: 0; background: var(--panel); }
+  td.flag-bad { color: var(--bad); font-weight: 600; } td.flag-ok { color: var(--good); }
+  .scroll { max-height: 420px; overflow: auto; }
+  pre { margin: 8px 0 0; font-size: 11.5px; white-space: pre-wrap; word-break: break-word; color: var(--dim); max-height: 320px; overflow: auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Sfx demo</h1>
+  <button id="unlock" class="primary">Enable audio</button>
+  <span id="state" class="stat no">context <b>locked</b></span>
+  <label>master <input id="vol" type="range" min="0" max="1" step="0.01" value="0.8"><b id="volV">0.80</b></label>
+  <label>music <input id="mvol" type="range" min="0" max="1" step="0.01" value="0.6"><b id="mvolV">0.60</b></label>
+  <label><input id="mute" type="checkbox"> mute</label>
+  <span class="stat">voices <b id="voices">0</b> / <span id="maxVoices">24</span> (peak <b id="voicesPeak">0</b>)</span>
+  <span class="stat">loops <b id="loopCount">0</b></span>
+  <span class="stat">music <b id="musicNow">–</b></span>
+  <span id="meter" title="output peak"><i></i></span>
+</header>
+
+<main>
+  <div class="col">
+    <section>
+      <h2>One-shots</h2>
+      <div id="groups"></div>
+      <p class="note">Buttons play non-positional unless "one-shots use source position" is ticked in the spatial panel. <code>weakpoint</code> steps 0–7 climb a scale; <code>footstep</code> takes a surface; <code>countdown_beep</code> has a final variant.</p>
+    </section>
+    <section>
+      <h2>Loops</h2>
+      <div id="loops"></div>
+      <p class="note"><code>chest_hum</code> is positional: it follows the source dot on the pad and is silent beyond 22 m.</p>
+    </section>
+    <section>
+      <h2>Music</h2>
+      <div class="btns" id="music"></div>
+    </section>
+    <section>
+      <h2>Measurements</h2>
+      <div class="row">
+        <button id="runAll" class="primary">Measure every sound (offline render)</button>
+        <button id="runEngine">Engine checks (offline)</button>
+        <button id="runLive">Engine checks (live, ~40 s)</button>
+        <span class="stat" id="runStatus"></span>
+      </div>
+      <div class="scroll"><table id="results"></table></div>
+      <pre id="engineOut"></pre>
+      <p class="note">Peak and RMS are measured after the master gain at master volume 1.0 (worst case). Flags: silent = peak &lt; 0.01, clip = peak &gt; 1.0. The same data is returned by <code>window.__sfxTest.runAll()</code>.</p>
+    </section>
+  </div>
+
+  <div class="col">
+    <section>
+      <h2>Spatial pad</h2>
+      <canvas id="pad" width="660" height="660" aria-label="Drag to move the sound source around the listener"></canvas>
+      <div class="row">
+        <span class="stat">x <b id="px">0</b> m &nbsp; z <b id="pz">0</b> m &nbsp; dist <b id="pd">0</b> m</span>
+      </div>
+      <div class="row">
+        <label>sound <select id="padSound"></select></label>
+        <button id="padFire">Fire</button>
+        <label><input id="padAuto" type="checkbox"> auto-fire</label>
+      </div>
+      <div class="row">
+        <label>pad radius <select id="padRadius"><option>15</option><option selected>60</option><option>120</option><option>250</option></select> m</label>
+        <label>heading <input id="heading" type="range" min="0" max="359" step="1" value="0"><b id="headingV">0°</b></label>
+      </div>
+      <div class="row">
+        <label><input id="padAll" type="checkbox"> one-shots use source position</label>
+      </div>
+      <p class="note">Listener sits at the centre (0, 1.7, 0). Up on the pad is north (−z), right is east (+x). Heading is clockwise from north; forward = (sin h, −cos h).</p>
+    </section>
+  </div>
+</main>
+
+<script type="module">
+import { sfx, Sfx, SOUND_NAMES, LOOP_NAMES, MUSIC_NAMES } from './Sfx.js';
+
+const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const round = (v, n = 4) => (Number.isFinite(v) ? Math.round(v * 10 ** n) / 10 ** n : v);
+const dB = (v) => (v > 0 ? round(20 * Math.log10(v), 1) : -200);
+
+// ---------------------------------------------------------------------------
+// UI: one-shots
+// ---------------------------------------------------------------------------
+
+const GROUPS = [
+  ['Weapons', ['shot_rifle', 'shot_smg', 'shot_shotgun', 'shot_sniper', 'shot_pistol', 'reload', 'empty_click', 'weapon_switch', 'bullet_impact', 'hitmarker', 'headshot', 'elimination']],
+  ['Harvest', ['hit_wood', 'hit_stone', 'hit_metal', 'weakpoint', 'tree_fall', 'swing']],
+  ['Building', ['build_wood', 'build_stone', 'build_metal', 'build_break', 'build_denied', 'building_collapse']],
+  ['Loot / UI', ['pickup', 'pickup_ammo', 'chest_open', 'drink_shield', 'heal', 'ui_click', 'ui_hover', 'zone_enter']],
+  ['Player', ['footstep', 'jump', 'land', 'hurt', 'shield_break', 'death']],
+  ['Storm', ['storm_warning', 'storm_tick', 'countdown_beep']],
+];
+// Per-sound option variants: [label, opts]
+const VARIANTS = {
+  footstep: [['grass', { surface: 'grass' }], ['road', { surface: 'road' }], ['wood', { surface: 'wood' }]],
+  weakpoint: [0, 1, 2, 3, 4, 5, 6, 7].map((s) => [String(s), { step: s }]),
+  countdown_beep: [['final', { final: true }]],
+};
+
+const source = { x: 6, z: -9 };
+const LISTENER_Y = 1.7;
+
+function trigger(name, extra) {
+  sfx.unlock();
+  const opts = { ...(extra || {}) };
+  if ($('padAll').checked) Object.assign(opts, { x: source.x, y: LISTENER_Y, z: source.z });
+  return sfx.play(name, opts);
+}
+
+function buildOneShots() {
+  const known = new Set(GROUPS.flatMap((g) => g[1]));
+  const groups = GROUPS.map(([title, names]) => [title, names.filter((n) => SOUND_NAMES.includes(n))]);
+  const other = SOUND_NAMES.filter((n) => !known.has(n));
+  if (other.length) groups.push(['Other', other]);
+  const host = $('groups');
+  for (const [title, names] of groups) {
+    const h = document.createElement('h2');
+    h.textContent = title;
+    h.style.marginTop = '12px';
+    const box = document.createElement('div');
+    box.className = 'btns';
+    for (const name of names) {
+      const b = document.createElement('button');
+      b.textContent = name;
+      b.dataset.sound = name;
+      b.addEventListener('click', () => trigger(name));
+      box.appendChild(b);
+      for (const [label, opts] of VARIANTS[name] || []) {
+        const vb = document.createElement('button');
+        vb.className = 'small variant';
+        vb.textContent = label;
+        vb.title = `${name} ${JSON.stringify(opts)}`;
+        vb.addEventListener('click', () => trigger(name, opts));
+        box.appendChild(vb);
+      }
+    }
+    host.append(h, box);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// UI: loops, music, master
+// ---------------------------------------------------------------------------
+
+const loopOn = Object.create(null);
+const POSITIONAL_LOOPS = new Set(['chest_hum']);
+
+function loopOpts(name) {
+  return POSITIONAL_LOOPS.has(name) ? { id: 'demo', x: source.x, y: LISTENER_Y, z: source.z } : { id: 'demo' };
+}
+
+function buildLoops() {
+  const host = $('loops');
+  for (const name of LOOP_NAMES) {
+    const row = document.createElement('div');
+    row.className = 'looprow';
+    const b = document.createElement('button');
+    b.textContent = name;
+    b.dataset.loop = name;
+    const lab = document.createElement('label');
+    const slider = document.createElement('input');
+    slider.type = 'range'; slider.min = '0'; slider.max = '1'; slider.step = '0.01'; slider.value = '1';
+    slider.setAttribute('aria-label', `${name} gain`);
+    const val = document.createElement('b');
+    val.textContent = '1.00';
+    lab.append('gain ', slider, val);
+    b.addEventListener('click', () => {
+      sfx.unlock();
+      loopOn[name] = !loopOn[name];
+      b.classList.toggle('on', loopOn[name]);
+      if (loopOn[name]) sfx.startLoop(name, loopOpts(name));
+      else sfx.stopLoop(name, 'demo');
+    });
+    slider.addEventListener('input', () => {
+      val.textContent = Number(slider.value).toFixed(2);
+      sfx.setLoopGain(name, Number(slider.value));
+    });
+    row.append(b, lab, document.createElement('span'));
+    host.appendChild(row);
+  }
+}
+
+function buildMusic() {
+  const host = $('music');
+  for (const name of MUSIC_NAMES) {
+    const b = document.createElement('button');
+    b.textContent = `play ${name}`;
+    b.addEventListener('click', () => { sfx.unlock(); sfx.playMusic(name); });
+    host.appendChild(b);
+  }
+  const stop = document.createElement('button');
+  stop.textContent = 'stop music';
+  stop.addEventListener('click', () => sfx.stopMusic());
+  host.appendChild(stop);
+}
+
+$('unlock').addEventListener('click', () => { sfx.unlock(); sfx.play('ui_click'); });
+$('vol').addEventListener('input', (e) => { sfx.setVolume(Number(e.target.value)); $('volV').textContent = Number(e.target.value).toFixed(2); });
+$('mvol').addEventListener('input', (e) => { sfx.setMusicVolume(Number(e.target.value)); $('mvolV').textContent = Number(e.target.value).toFixed(2); });
+$('mute').addEventListener('change', (e) => sfx.setMuted(e.target.checked));
+sfx.setVolume(Number($('vol').value));
+sfx.setMusicVolume(Number($('mvol').value));
+sfx.autoUnlock(window);
+
+// ---------------------------------------------------------------------------
+// UI: spatial pad
+// ---------------------------------------------------------------------------
+
+const pad = $('pad');
+const pctx = pad.getContext('2d');
+let padRadius = 60;
+let heading = 0;
+const forward = () => {
+  const h = (heading * Math.PI) / 180;
+  return [Math.sin(h), -Math.cos(h)];
+};
+
+function drawPad() {
+  const W = pad.width, c = W / 2, s = c / padRadius;
+  pctx.clearRect(0, 0, W, W);
+  pctx.lineWidth = 2;
+  pctx.font = '20px system-ui, sans-serif';
+  const step = padRadius <= 15 ? 5 : padRadius <= 60 ? 20 : padRadius <= 120 ? 40 : 50;
+  for (let r = step; r <= padRadius; r += step) {
+    pctx.strokeStyle = '#263140';
+    pctx.beginPath(); pctx.arc(c, c, r * s, 0, Math.PI * 2); pctx.stroke();
+    pctx.fillStyle = '#5c6b7d';
+    pctx.fillText(`${r} m`, c + 6, c - r * s + 22);
+  }
+  pctx.strokeStyle = '#263140';
+  pctx.beginPath(); pctx.moveTo(c, 0); pctx.lineTo(c, W); pctx.moveTo(0, c); pctx.lineTo(W, c); pctx.stroke();
+  pctx.fillStyle = '#5c6b7d';
+  pctx.fillText('N (−z)', c + 8, 24); pctx.fillText('E (+x)', W - 78, c - 8);
+  // listener: triangle pointing along forward
+  const [fx, fz] = forward();
+  pctx.save();
+  pctx.translate(c, c);
+  pctx.rotate(Math.atan2(fx, -fz));
+  pctx.fillStyle = '#dfe6ee';
+  pctx.beginPath(); pctx.moveTo(0, -22); pctx.lineTo(14, 14); pctx.lineTo(-14, 14); pctx.closePath(); pctx.fill();
+  pctx.restore();
+  // source
+  const sx = c + source.x * s, sz = c + source.z * s;
+  pctx.strokeStyle = '#ffb54766';
+  pctx.beginPath(); pctx.moveTo(c, c); pctx.lineTo(sx, sz); pctx.stroke();
+  pctx.fillStyle = '#ffb547';
+  pctx.beginPath(); pctx.arc(sx, sz, 13, 0, Math.PI * 2); pctx.fill();
+  $('px').textContent = source.x.toFixed(1);
+  $('pz').textContent = source.z.toFixed(1);
+  $('pd').textContent = Math.hypot(source.x, source.z).toFixed(1);
+}
+
+function moveSource(x, z) {
+  source.x = x; source.z = z;
+  for (const name of LOOP_NAMES) if (loopOn[name] && POSITIONAL_LOOPS.has(name)) sfx.startLoop(name, loopOpts(name));
+  drawPad();
+}
+
+function padEvent(e) {
+  const r = pad.getBoundingClientRect();
+  const nx = ((e.clientX - r.left) / r.width) * 2 - 1;
+  const nz = ((e.clientY - r.top) / r.height) * 2 - 1;
+  moveSource(Math.max(-1, Math.min(1, nx)) * padRadius, Math.max(-1, Math.min(1, nz)) * padRadius);
+}
+let dragging = false;
+pad.addEventListener('pointerdown', (e) => { dragging = true; pad.setPointerCapture(e.pointerId); sfx.unlock(); padEvent(e); firePad(); });
+pad.addEventListener('pointermove', (e) => { if (dragging) padEvent(e); });
+const endDrag = () => { dragging = false; };
+pad.addEventListener('pointerup', endDrag);
+pad.addEventListener('pointercancel', endDrag);
+
+for (const name of SOUND_NAMES) $('padSound').add(new Option(name, name));
+$('padSound').value = 'shot_rifle';
+const firePad = () => sfx.play($('padSound').value, { x: source.x, y: LISTENER_Y, z: source.z });
+$('padFire').addEventListener('click', () => { sfx.unlock(); firePad(); });
+$('padRadius').addEventListener('change', (e) => {
+  const next = Number(e.target.value);
+  moveSource((source.x / padRadius) * next, (source.z / padRadius) * next);
+  padRadius = next;
+  drawPad();
+});
+$('heading').addEventListener('input', (e) => { heading = Number(e.target.value); $('headingV').textContent = `${heading}°`; drawPad(); });
+setInterval(() => { if ($('padAuto').checked) firePad(); }, 380);
+
+// ---------------------------------------------------------------------------
+// Readouts (voice count, state, meter). Also feeds the listener every frame,
+// exactly as the game loop would.
+// ---------------------------------------------------------------------------
+
+let analyser = null, analyserCtx = null, meterBuf = null, meterLevel = 0, voicesPeak = 0, peakAt = 0;
+function frame() {
+  const [fx, fz] = forward();
+  sfx.setListener(0, LISTENER_Y, 0, fx, fz);
+  const n = sfx.voiceCount;
+  const t = performance.now();
+  if (n >= voicesPeak || t - peakAt > 3000) { voicesPeak = n; peakAt = t; }
+  $('voices').textContent = n;
+  $('voicesPeak').textContent = voicesPeak;
+  $('maxVoices').textContent = sfx.config.maxVoices;
+  $('loopCount').textContent = sfx._loops ? [...sfx._loops.values()].filter((e) => e.inst).length : 0;
+  $('musicNow').textContent = sfx.musicPlaying || '–';
+  const st = sfx.ctx ? sfx.ctx.state : 'locked';
+  $('state').className = `stat ${sfx.ready ? 'ok' : 'no'}`;
+  $('state').querySelector('b').textContent = st;
+  $('unlock').hidden = sfx.ready;
+  if (sfx.ready && sfx.master) {
+    if (analyserCtx !== sfx.ctx) {
+      analyserCtx = sfx.ctx;
+      analyser = sfx.ctx.createAnalyser();
+      analyser.fftSize = 2048;
+      meterBuf = new Float32Array(analyser.fftSize);
+      sfx.master.connect(analyser);
+    }
+    analyser.getFloatTimeDomainData(meterBuf);
+    let peak = 0;
+    for (let i = 0; i < meterBuf.length; i++) { const a = Math.abs(meterBuf[i]); if (a > peak) peak = a; }
+    meterLevel = Math.max(peak, meterLevel * 0.9);
+    $('meter').firstElementChild.style.width = `${Math.min(100, meterLevel * 100).toFixed(1)}%`;
+  }
+  requestAnimationFrame(frame);
+}
+
+buildOneShots();
+buildLoops();
+buildMusic();
+drawPad();
+requestAnimationFrame(frame);
+
+// ---------------------------------------------------------------------------
+// Test hook: window.__sfxTest
+//   runAll()  offline-render every one-shot, loop and music track -> [{name, kind, peak, rms, ...}]
+//   engine()  deterministic engine checks on OfflineAudioContext
+//   live()    real-time checks on the page's own AudioContext (needs audio enabled)
+// ---------------------------------------------------------------------------
+
+/** Peak / RMS of an AudioBuffer between two times. RMS covers the audible span only. */
+function analyse(buf, from = 0, to = Infinity) {
+  const sr = buf.sampleRate;
+  const i0 = Math.max(0, Math.floor(from * sr));
+  const i1 = Math.min(buf.length, Math.ceil(to * sr));
+  const L = buf.getChannelData(0);
+  const R = buf.numberOfChannels > 1 ? buf.getChannelData(1) : L;
+  let peak = 0, first = -1, last = -1, bad = 0, maxStep = 0;
+  for (let i = i0; i < i1; i++) {
+    const l = L[i], r = R[i];
+    if (!Number.isFinite(l) || !Number.isFinite(r)) { bad++; continue; }
+    const a = Math.max(Math.abs(l), Math.abs(r));
+    if (a > peak) peak = a;
+    if (a > 1e-4) { if (first < 0) first = i; last = i; }
+    if (i > i0) { const d = Math.abs(l - L[i - 1]); if (d > maxStep) maxStep = d; }
+  }
+  let sl = 0, sr2 = 0, n = 0, rmsMax = 0;
+  if (first >= 0) {
+    const win = Math.floor(sr * 0.05), hop = Math.floor(sr * 0.025);
+    for (let i = first; i <= last; i++) { sl += L[i] * L[i]; sr2 += R[i] * R[i]; n++; }
+    for (let s = first; s <= last; s += hop) {
+      let acc = 0;
+      const e = Math.min(last + 1, s + win);
+      for (let i = s; i < e; i++) acc += (L[i] * L[i] + R[i] * R[i]) * 0.5;
+      const v = Math.sqrt(acc / win);
+      if (v > rmsMax) rmsMax = v;
+    }
+  }
+  return {
+    peak, rms: n ? Math.sqrt((sl + sr2) / (2 * n)) : 0, rmsMax,
+    rmsL: n ? Math.sqrt(sl / n) : 0, rmsR: n ? Math.sqrt(sr2 / n) : 0,
+    start: first < 0 ? 0 : first / sr, dur: first < 0 ? 0 : (last - first + 1) / sr, bad, maxStep,
+  };
+}
+
+/** Run `fn` at an exact render time of an offline engine. Register before startRendering(). */
+function at(engine, time, fn) {
+  const ctx = engine.ctx;
+  ctx.suspend(time).then(() => {
+    try { fn(); } finally { ctx.resume(); }
+  });
+}
+
+// Chrome's DynamicsCompressorNode fades its gain in over the first ~100 ms of a
+// context's life, so anything measured at t = 0 reads up to 12 dB low. Every
+// offline measurement therefore starts its sound at WARM seconds.
+const WARM = 1;
+
+async function renderOnce(kind, name, opts, seconds, engineOpts) {
+  const e = Sfx.offline({ seconds: seconds + WARM, volume: 1, ...(engineOpts || {}) });
+  if (!e) throw new Error('OfflineAudioContext unavailable');
+  let started = true;
+  at(e, WARM, () => {
+    if (kind === 'sound') started = e.play(name, opts);
+    else if (kind === 'loop') e.startLoop(name, opts);
+    else e.playMusic(name);
+  });
+  const buf = await e.ctx.startRendering();
+  if (e.lastError) throw e.lastError;
+  if (!started) throw new Error('play() returned false');
+  return buf;
+}
+
+const TEST_VARIANTS = {
+  footstep: [['road', { surface: 'road' }], ['wood', { surface: 'wood' }]],
+  weakpoint: [['step7', { step: 7 }]],
+  countdown_beep: [['final', { final: true }]],
+};
+
+async function measure(kind, name, label, opts, seconds, from, runs) {
+  const row = { name: label, kind, peak: 0, rms: 0, rmsMax: 0, dur: 0, error: null };
+  try {
+    let rms = 0, bad = 0;
+    for (let i = 0; i < runs; i++) {
+      const a = analyse(await renderOnce(kind, name, opts, seconds), WARM + from);
+      row.peak = Math.max(row.peak, a.peak);
+      row.rmsMax = Math.max(row.rmsMax, a.rmsMax);
+      row.dur = Math.max(row.dur, a.dur);
+      rms += a.rms;
+      bad += a.bad;
+    }
+    row.rms = rms / runs;
+    if (bad) row.error = `${bad} non-finite samples`;
+  } catch (err) {
+    row.error = String((err && err.message) || err);
+  }
+  row.peakDb = dB(row.peak);
+  row.rmsDb = dB(row.rms);
+  row.flag = row.error ? 'error' : row.peak < 0.01 ? 'silent' : row.peak > 1 ? 'clip' : '';
+  for (const k of ['peak', 'rms', 'rmsMax', 'dur']) row[k] = round(row[k], 4);
+  return row;
+}
+
+async function runAll(options = {}) {
+  const runs = options.runs || 3;
+  const rows = [];
+  for (const name of SOUND_NAMES) {
+    rows.push(await measure('sound', name, name, undefined, 3, 0, runs));
+    for (const [label, opts] of TEST_VARIANTS[name] || []) {
+      rows.push(await measure('sound', name, `${name}:${label}`, opts, 3, 0, runs));
+    }
+  }
+  // loops: skip the fade-in, measure the steady state
+  for (const name of LOOP_NAMES) rows.push(await measure('loop', name, name, undefined, 8, 1.5, 1));
+  for (const name of MUSIC_NAMES) rows.push(await measure('music', name, name, undefined, name === 'menu' ? 40 : 5, 0, 1));
+  return rows;
+}
+
+// --- deterministic engine checks (offline) ----------------------------------
+
+function preUnlock() {
+  const e = new Sfx();
+  const out = { threw: null, playReturned: [], ctxCreated: false };
+  try {
+    for (const name of SOUND_NAMES) out.playReturned.push(e.play(name, { x: 1, y: 0, z: 2 }));
+    for (const name of LOOP_NAMES) {
+      e.startLoop(name, { id: 'a', x: 1, z: 1 });
+      e.setLoopGain(name, 0.5);
+      e.setLoopGain(name, 0.5, 'a');
+      e.stopLoop(name, 'a');
+      e.startLoop(name);
+      e.stopLoop(name);
+    }
+    for (const name of MUSIC_NAMES) e.playMusic(name);
+    e.stopMusic();
+    e.setVolume(0.5); e.setMuted(true); e.setMuted(false); e.setMusicVolume(0.3);
+    e.setListener(1, 2, 3, 0, -1);
+    e.setListener(NaN, undefined, null, 0, 0);
+    e.play('nope'); e.play(undefined); e.startLoop('nope'); e.stopLoop('nope'); e.playMusic('nope'); e.setLoopGain('nope', 1);
+    e.has('shot_rifle');
+    e.dispose();
+  } catch (err) {
+    out.threw = String(err && err.message || err);
+  }
+  out.ctxCreated = e.ctx !== null;
+  out.anyPlayed = out.playReturned.some(Boolean);
+  delete out.playReturned;
+  out.voiceCount = e.voiceCount;
+  out.ready = e.ready;
+  out.lastError = e.lastError ? String(e.lastError) : null;
+  out.pass = !out.threw && !out.ctxCreated && !out.anyPlayed && out.voiceCount === 0 && !out.lastError;
+  return out;
+}
+
+async function spatial() {
+  // countdown_beep: no pitch variation, ref 8 m, max 120 m, rolloff exponent 2
+  const name = 'countdown_beep';
+  const dist = [0, 8, 20, 40, 64, 90, 110, 119, 121, 400];
+  const falloff = [];
+  for (const d of dist) {
+    const e = Sfx.offline({ seconds: WARM + 0.6 });
+    e.setListener(0, 0, 0, 0, -1);
+    let played = false;
+    at(e, WARM, () => { played = e.play(name, { x: 0, y: 0, z: -d }); });
+    const a = analyse(await e.ctx.startRendering());
+    falloff.push({ d, played, peak: round(a.peak), rms: round(a.rms, 5) });
+  }
+  const audible = falloff.filter((f) => f.played);
+  let monotonic = true;
+  for (let i = 2; i < audible.length; i++) if (!(audible[i].rms < audible[i - 1].rms)) monotonic = false;
+  const pan = [];
+  // [label, forward, source position, expected louder side]
+  const cases = [
+    ['face north, source east', [0, -1], [15, 0], 'R'],
+    ['face north, source west', [0, -1], [-15, 0], 'L'],
+    ['face north, source ahead', [0, -1], [0, -15], 'C'],
+    ['face north, source behind', [0, -1], [0, 15], 'C'],
+    ['face east, source south', [1, 0], [0, 15], 'R'],
+    ['face east, source north', [1, 0], [0, -15], 'L'],
+    ['face south, source east', [0, 1], [15, 0], 'L'],
+    ['face west, source south', [-1, 0], [0, 15], 'L'],
+  ];
+  let panOk = true;
+  for (const [label, f, p, want] of cases) {
+    const e = Sfx.offline({ seconds: WARM + 0.6 });
+    e.setListener(0, 0, 0, f[0], f[1]);
+    at(e, WARM, () => e.play(name, { x: p[0], y: 0, z: p[1] }));
+    const a = analyse(await e.ctx.startRendering());
+    const got = a.rmsR > a.rmsL * 1.2 ? 'R' : a.rmsL > a.rmsR * 1.2 ? 'L' : 'C';
+    if (got !== want) panOk = false;
+    pan.push({ label, want, got, L: round(a.rmsL, 5), R: round(a.rmsR, 5) });
+  }
+  return {
+    falloff, pan,
+    pass: monotonic && panOk && falloff[0].played && falloff[falloff.length - 2].played === false && falloff[falloff.length - 1].played === false,
+  };
+}
+
+async function volumeAndMute() {
+  const run = async (setup, kind = 'loop', name = 'chest_hum') => {
+    const e = Sfx.offline({ seconds: 3 });
+    if (kind === 'loop') e.startLoop(name); else e.playMusic(name);
+    setup(e);
+    return analyse(await e.ctx.startRendering(), 1.5).rms;
+  };
+  const full = await run((e) => e.setVolume(1));
+  const half = await run((e) => e.setVolume(0.5));
+  const zero = await run((e) => e.setVolume(0));
+  const muted = await run((e) => { e.setVolume(1); e.setMuted(true); });
+  const unmuted = await run((e) => { e.setVolume(1); e.setMuted(true); e.setMuted(false); });
+  const music = async (mv) => {
+    const e = Sfx.offline({ seconds: WARM + 4.6, volume: 1 });
+    e.setMusicVolume(mv);
+    at(e, WARM, () => e.playMusic('victory'));
+    return analyse(await e.ctx.startRendering(), WARM + 0.5, WARM + 2).rms;
+  };
+  const m1 = await music(1), mHalf = await music(0.5), m0 = await music(0);
+  const out = {
+    masterRms: { full: round(full, 5), half: round(half, 5), zero: round(zero, 6), muted: round(muted, 6), unmuted: round(unmuted, 5) },
+    halfVsFullDb: dB(half / full), // volume is squared -> expect about -12 dB
+    musicRms: { full: round(m1, 5), half: round(mHalf, 5), zero: round(m0, 6) },
+    musicHalfVsFullDb: dB(mHalf / m1), // linear -> about -6 dB before the compressor
+  };
+  out.pass = full > 0.01 && Math.abs(out.halfVsFullDb + 12) < 1 && zero < 1e-5 && muted < 1e-5 && Math.abs(unmuted - full) / full < 0.05 &&
+    m1 > 0.01 && mHalf < m1 && m0 < 1e-5;
+  return out;
+}
+
+/** Loop start / retarget / stop: no sample step larger than the loop's own steady-state motion. */
+async function loopTransitions() {
+  const out = { loops: {}, pass: true };
+  for (const name of LOOP_NAMES) {
+    const e = Sfx.offline({ seconds: 7.8, volume: 1 });
+    at(e, 1.5, () => e.startLoop(name));
+    at(e, 4.5, () => e.setLoopGain(name, 0.3));
+    at(e, 5.5, () => e.setLoopGain(name, 1));
+    at(e, 6.5, () => e.stopLoop(name));
+    const buf = await e.ctx.startRendering();
+    const steady = analyse(buf, 2.5, 4.5);
+    const quiet = analyse(buf, 5.1, 5.5);
+    const r = {
+      steadyRms: round(steady.rms, 4),
+      quietRms: round(quiet.rms, 4),
+      beforeStart: round(analyse(buf, 0, 1.49).peak, 6),
+      first5ms: round(analyse(buf, 1.5, 1.505).peak, 5),
+      stepSteady: round(steady.maxStep, 5),
+      stepStart: round(analyse(buf, 1.49, 1.7).maxStep, 5),
+      stepDown: round(analyse(buf, 4.49, 4.8).maxStep, 5),
+      stepUp: round(analyse(buf, 5.49, 5.8).maxStep, 5),
+      stepStop: round(analyse(buf, 6.49, 7.3).maxStep, 5),
+      tailBeforeCut: round(analyse(buf, 7.0, 7.1).peak, 6),
+      afterStop: round(analyse(buf, 7.2, 7.8).peak, 6),
+      error: e.lastError ? String(e.lastError) : null,
+    };
+    const lim = r.stepSteady * 1.5 + 1e-4;
+    r.pass = !r.error && r.steadyRms > 0.005 && r.quietRms < r.steadyRms * 0.6 && r.beforeStart === 0 && r.first5ms < steady.peak * 0.2 &&
+      r.stepStart <= lim && r.stepDown <= lim && r.stepUp <= lim && r.stepStop <= lim && r.tailBeforeCut < 0.002 && r.afterStop < 1e-4;
+    if (!r.pass) out.pass = false;
+    out.loops[name] = r;
+  }
+  // positional cap: 7 chests in range, only the nearest 4 may be synthesized
+  const e = Sfx.offline({ seconds: 1 });
+  for (let i = 0; i < 7; i++) e.startLoop('chest_hum', { id: i, x: 2 + i * 2, y: 0, z: 0 });
+  e.startLoop('chest_hum', { id: 'far', x: 500, y: 0, z: 0 });
+  const live = [...e._loops.values()].filter((l) => l.inst).map((l) => l.id);
+  out.chestCap = { requested: 8, synthesized: live };
+  if (live.length !== 4 || live.join() !== '0,1,2,3') out.pass = false;
+  await e.ctx.startRendering();
+  return out;
+}
+
+/** 40 SMG shots in 2 s plus footsteps, rendered offline: voice cap and master peak. */
+async function rapidFire() {
+  const e = Sfx.offline({ seconds: 4.4, volume: 1 });
+  let shots = 0, steps = 0, maxVoices = 0;
+  const note = () => { maxVoices = Math.max(maxVoices, e.voiceCount); };
+  for (let i = 0; i < 40; i++) at(e, 1.1 + i * 0.05, () => { if (e.play('shot_smg', { x: 0.5, y: 0, z: -1 })) shots++; note(); });
+  for (let i = 0; i < 7; i++) at(e, 1.117 + i * 0.3, () => { if (e.play('footstep', { x: 0, y: 0, z: 0 })) steps++; note(); });
+  let endVoices = -1;
+  at(e, 4.0, () => { e._prune(e.ctx.currentTime); endVoices = e.voiceCount; });
+  const a = analyse(await e.ctx.startRendering());
+  const out = { shots, steps, maxVoices, endVoices, peak: round(a.peak), rms: round(a.rms), error: e.lastError ? String(e.lastError) : null };
+  out.pass = shots === 40 && steps === 7 && maxVoices <= 8 && endVoices === 0 && a.peak <= 1 && !out.error;
+  return out;
+}
+
+/** Flood: every sound name every 30 ms for 1.5 s. Voice count must stay at the cap. */
+async function flood() {
+  const e = Sfx.offline({ seconds: 7, volume: 1 });
+  let attempts = 0, started = 0, maxVoices = 0;
+  for (let i = 0; i < 50; i++) {
+    at(e, 1.1 + i * 0.03, () => {
+      for (const name of SOUND_NAMES) { attempts++; if (e.play(name)) started++; }
+      maxVoices = Math.max(maxVoices, e.voiceCount);
+    });
+  }
+  let endVoices = -1;
+  at(e, 6.5, () => { e._prune(e.ctx.currentTime); endVoices = e.voiceCount; });
+  const a = analyse(await e.ctx.startRendering());
+  const out = { attempts, started, maxVoices, cap: e.config.maxVoices, endVoices, peak: round(a.peak), rms: round(a.rms), bad: a.bad };
+  out.pass = maxVoices <= e.config.maxVoices && endVoices === 0 && a.peak <= 1 && a.bad === 0;
+  return out;
+}
+
+/** Everything loud at once: must not exceed full scale at the output. */
+async function worstCase() {
+  const e = Sfx.offline({ seconds: 5, volume: 1, musicVolume: 1 });
+  e.startLoop('storm_wind');
+  e.startLoop('glide_wind');
+  e.playMusic('menu');
+  at(e, 1.5, () => {
+    for (const name of ['shot_shotgun', 'shot_sniper', 'building_collapse', 'tree_fall', 'elimination', 'shot_rifle', 'build_break', 'death']) e.play(name);
+  });
+  const a = analyse(await e.ctx.startRendering());
+  return { peak: round(a.peak), rmsMax: round(a.rmsMax), bad: a.bad, pass: a.peak <= 1 && a.bad === 0 };
+}
+
+async function musicOffline() {
+  const e = Sfx.offline({ seconds: 40, volume: 1 });
+  e.playMusic('menu');
+  const buf = await e.ctx.startRendering();
+  const loopLen = 16 * 16 * (60 / 112 / 4);
+  const seg = (a, b) => round(analyse(buf, a, b).rms, 4);
+  const out = {
+    loopSeconds: round(loopLen, 3),
+    rmsBars1to4: seg(0, loopLen / 4), rmsBars5to8: seg(loopLen / 4, loopLen / 2), rmsBars9to16: seg(loopLen / 2, loopLen),
+    rmsAfterWrap: seg(loopLen + 0.1, 40), peak: round(analyse(buf).peak),
+    error: e.lastError ? String(e.lastError) : null,
+  };
+  out.pass = !out.error && out.rmsBars1to4 > 0.01 && out.rmsAfterWrap > 0.01 && out.peak <= 1;
+  return out;
+}
+
+async function engine() {
+  const out = {};
+  const run = async (key, fn) => {
+    try { out[key] = await fn(); } catch (err) { out[key] = { pass: false, error: String(err && err.stack || err) }; }
+  };
+  await run('preUnlock', preUnlock);
+  await run('spatial', spatial);
+  await run('volumeAndMute', volumeAndMute);
+  await run('loopTransitions', loopTransitions);
+  await run('rapidFire', rapidFire);
+  await run('flood', flood);
+  await run('worstCase', worstCase);
+  await run('musicOffline', musicOffline);
+  out.pass = Object.values(out).every((v) => v.pass);
+  return out;
+}
+
+// --- real-time checks on the page's own context -----------------------------
+
+const TAP_SRC = `
+class SfxTap extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.peak = 0; this.sum = 0; this.n = 0;
+    this.port.onmessage = (e) => {
+      if (e.data === 'read') this.port.postMessage({ peak: this.peak, sum: this.sum, n: this.n });
+      this.peak = 0; this.sum = 0; this.n = 0;
+    };
+  }
+  process(inputs) {
+    const inp = inputs[0];
+    for (let c = 0; c < inp.length; c++) {
+      const d = inp[c];
+      for (let i = 0; i < d.length; i++) {
+        const a = Math.abs(d[i]);
+        if (a > this.peak) this.peak = a;
+        this.sum += d[i] * d[i];
+      }
+      this.n += d.length;
+    }
+    return true;
+  }
+}
+registerProcessor('sfx-tap', SfxTap);`;
+
+/** Gap-free peak/RMS tap after the master gain. */
+async function makeTap(engineInstance) {
+  const ctx = engineInstance.ctx;
+  const url = URL.createObjectURL(new Blob([TAP_SRC], { type: 'application/javascript' }));
+  try { await ctx.audioWorklet.addModule(url); } finally { URL.revokeObjectURL(url); }
+  const node = new AudioWorkletNode(ctx, 'sfx-tap', { numberOfInputs: 1, numberOfOutputs: 0, channelCount: 2, channelCountMode: 'explicit' });
+  engineInstance.master.connect(node);
+  const ask = (msg) => new Promise((resolve) => {
+    node.port.onmessage = (e) => resolve({ peak: round(e.data.peak), rms: round(e.data.n ? Math.sqrt(e.data.sum / e.data.n) : 0, 5) });
+    node.port.postMessage(msg);
+  });
+  return {
+    read: () => ask('read'), // returns stats since the last read/reset, then resets
+    reset: () => { node.port.postMessage('reset'); },
+    close: () => { try { engineInstance.master.disconnect(node); } catch (e) { /* ignore */ } },
+  };
+}
+
+async function whenReady(e, ms = 3000) {
+  e.unlock();
+  const t0 = performance.now();
+  while (!e.ready && performance.now() - t0 < ms) await sleep(20);
+  return e.ready;
+}
+
+/** Count scheduled sources that were started vs. ones that reported `ended`. */
+function trackSources() {
+  const c = { started: 0, ended: 0 };
+  const protos = [AudioScheduledSourceNode.prototype, AudioBufferSourceNode.prototype];
+  const orig = protos.map((p) => p.start);
+  protos.forEach((p, i) => {
+    p.start = function (...args) {
+      c.started++;
+      this.addEventListener('ended', () => { c.ended++; }, { once: true });
+      return orig[i].apply(this, args);
+    };
+  });
+  c.restore = () => protos.forEach((p, i) => { p.start = orig[i]; });
+  return c;
+}
+
+async function live() {
+  const out = { pass: false };
+  if (!(await whenReady(sfx))) return { pass: false, error: 'AudioContext did not start (needs a user gesture)' };
+  sfx.stopMusic();
+  for (const name of LOOP_NAMES) sfx.stopLoop(name);
+  const saved = { volume: sfx.volume, muted: sfx.muted };
+  sfx.setMuted(false);
+  sfx.setVolume(1);
+  await sleep(900);
+  const tap = await makeTap(sfx);
+  out.sampleRate = sfx.ctx.sampleRate;
+
+  // 1. silence when idle
+  tap.reset(); await sleep(300);
+  out.idle = await tap.read();
+
+  // 2. rapid fire: 40 SMG shots in 2 s + footsteps
+  {
+    const src = trackSources();
+    let shots = 0, steps = 0, maxVoices = 0;
+    tap.reset();
+    const t0 = performance.now();
+    let nextShot = 0, nextStep = 0;
+    while (performance.now() - t0 < 2000) {
+      const t = performance.now() - t0;
+      if (shots + 0 < 40 && t >= nextShot) { nextShot += 50; if (sfx.play('shot_smg', { x: 0.5, y: LISTENER_Y, z: -1 })) shots++; }
+      if (t >= nextStep) { nextStep += 300; if (sfx.play('footstep')) steps++; }
+      maxVoices = Math.max(maxVoices, sfx.voiceCount);
+      await sleep(4);
+    }
+    await sleep(1200);
+    const level = await tap.read();
+    src.restore();
+    out.rapidFire = { shots, steps, maxVoices, voicesAfter: sfx.voiceCount, sourcesStarted: src.started, sourcesEnded: src.ended, ...level };
+    out.rapidFire.pass = shots >= 36 && maxVoices <= 8 && sfx.voiceCount === 0 && src.started === src.ended && level.peak > 0.05 && level.peak <= 1;
+  }
+
+  // 3. flood: every name every 30 ms for 1.5 s -> capped, then drains to zero
+  {
+    const src = trackSources();
+    let attempts = 0, started = 0, maxVoices = 0;
+    tap.reset();
+    const t0 = performance.now();
+    while (performance.now() - t0 < 1500) {
+      for (const name of SOUND_NAMES) { attempts++; if (sfx.play(name)) started++; }
+      maxVoices = Math.max(maxVoices, sfx.voiceCount);
+      await sleep(30);
+    }
+    await sleep(3500);
+    const level = await tap.read();
+    src.restore();
+    out.flood = { attempts, started, maxVoices, cap: sfx.config.maxVoices, voicesAfter: sfx.voiceCount, sourcesStarted: src.started, sourcesEnded: src.ended, ...level };
+    out.flood.pass = maxVoices <= sfx.config.maxVoices && sfx.voiceCount === 0 && src.started === src.ended && level.peak <= 1;
+  }
+
+  // 4. loops: start, retarget, stop
+  out.loops = {};
+  for (const name of LOOP_NAMES) {
+    sfx.setLoopGain(name, 1);
+    sfx.startLoop(name, { id: 'live' });
+    await sleep(1200); tap.reset(); await sleep(800);
+    const on = await tap.read();
+    sfx.setLoopGain(name, 0.25, 'live');
+    await sleep(700); tap.reset(); await sleep(800);
+    const low = await tap.read();
+    sfx.stopLoop(name, 'live');
+    await sleep(1000); tap.reset(); await sleep(300);
+    const off = await tap.read();
+    const pass = on.rms > 0.005 && low.rms < on.rms * 0.6 && off.peak < 1e-4;
+    out.loops[name] = { on, low, off, pass };
+  }
+
+  // 5. music: starts, keeps time across the loop point, stops
+  {
+    sfx.playMusic('menu');
+    await sleep(600); tap.reset(); await sleep(2000);
+    const playing = await tap.read();
+    const m = sfx._music;
+    const name = sfx.musicPlaying;
+    // jump the sequencer to 1 bar before the loop point and watch it wrap
+    const steps = m.M.steps;
+    m.step = steps - 16;
+    await sleep(600); tap.reset(); await sleep(3500);
+    const wrap = await tap.read();
+    const stepAfter = m.step;
+    sfx.stopMusic();
+    const stoppedName = sfx.musicPlaying;
+    await sleep(1200); tap.reset(); await sleep(400);
+    const stopped = await tap.read();
+    sfx.playMusic('victory');
+    await sleep(300); tap.reset(); await sleep(1500);
+    const victory = await tap.read();
+    const duringVictory = sfx.musicPlaying;
+    await sleep(3300);
+    const afterVictory = sfx.musicPlaying;
+    sfx.playMusic('defeat');
+    await sleep(300); tap.reset(); await sleep(1500);
+    const defeat = await tap.read();
+    await sleep(1800);
+    out.music = { name, playing, wrappedPastLoopPoint: stepAfter > steps, stepAfter, steps, wrap, stoppedName, stopped, victory, duringVictory, afterVictory, defeat, afterDefeat: sfx.musicPlaying };
+    out.music.pass = name === 'menu' && playing.rms > 0.005 && stepAfter > steps && wrap.rms > 0.005 && stoppedName === null && stopped.peak < 1e-4 &&
+      victory.rms > 0.005 && duringVictory === 'victory' && afterVictory === null && defeat.rms > 0.005 && sfx.musicPlaying === null;
+  }
+
+  // 6. volume / mute on the live graph
+  {
+    sfx.startLoop('storm_wind', { id: 'live' });
+    await sleep(1500); tap.reset(); await sleep(1500);
+    const full = await tap.read();
+    sfx.setVolume(0.5);
+    await sleep(300); tap.reset(); await sleep(1500);
+    const half = await tap.read();
+    sfx.setMuted(true);
+    await sleep(300); tap.reset(); await sleep(500);
+    const muted = await tap.read();
+    sfx.setMuted(false);
+    sfx.setVolume(1);
+    await sleep(300); tap.reset(); await sleep(1500);
+    const back = await tap.read();
+    sfx.stopLoop('storm_wind', 'live');
+    out.volume = { full, half, muted, back, halfVsFullDb: dB(half.rms / full.rms) };
+    out.volume.pass = full.rms > 0.005 && Math.abs(out.volume.halfVsFullDb + 12) < 3 && muted.peak < 1e-4 && back.rms > full.rms * 0.6;
+  }
+
+  tap.close();
+  sfx.setVolume(saved.volume);
+  sfx.setMuted(saved.muted);
+
+  // 7. dispose on a separate engine (keeps the page's own engine usable)
+  {
+    const e = new Sfx();
+    const ok = await whenReady(e);
+    const ctx = e.ctx;
+    e.autoUnlock(window);
+    e.play('shot_rifle'); e.play('chest_open');
+    e.startLoop('storm_wind'); e.startLoop('chest_hum', { id: 1, x: 1, z: 1 });
+    e.playMusic('menu');
+    await sleep(400);
+    const before = { voices: e.voiceCount, loops: e._loops.size, music: e.musicPlaying, state: ctx && ctx.state };
+    let threw = null;
+    try { e.dispose(); e.dispose(); } catch (err) { threw = String(err); }
+    const afterPlay = e.play('shot_rifle');
+    e.startLoop('storm_wind'); e.stopLoop('storm_wind'); e.playMusic('menu'); e.stopMusic(); e.setVolume(0.3); e.setListener(0, 0, 0, 0, -1);
+    await sleep(500);
+    // a gesture after dispose() must not resurrect the engine
+    window.dispatchEvent(new Event('pointerdown'));
+    await sleep(100);
+    const after = { ctxIsNull: e.ctx === null, oldCtxState: ctx && ctx.state, voices: e.voiceCount, loops: e._loops.size, music: e.musicPlaying, ready: e.ready, playAfterDispose: afterPlay };
+    // explicit unlock() after dispose is allowed and builds a fresh context
+    const again = await whenReady(e);
+    const replay = e.play('ui_click');
+    const fresh = e.ctx !== ctx;
+    e.dispose();
+    out.dispose = { unlocked: ok, before, threw, after, reusableAfterUnlock: again && replay && fresh };
+    out.dispose.pass = ok && !threw && after.ctxIsNull && after.oldCtxState === 'closed' && after.voices === 0 && after.loops === 0 &&
+      after.music === null && !after.ready && afterPlay === false && again && replay && fresh;
+  }
+
+  out.pass = out.idle.peak < 1e-4 && out.rapidFire.pass && out.flood.pass && Object.values(out.loops).every((l) => l.pass) &&
+    out.music.pass && out.volume.pass && out.dispose.pass;
+  return out;
+}
+
+// --- results table -----------------------------------------------------------
+
+function showRows(rows) {
+  const t = $('results');
+  t.textContent = '';
+  const head = t.insertRow();
+  for (const h of ['name', 'kind', 'peak', 'peak dBFS', 'rms', 'rms dBFS', 'loudest 50 ms', 'length s', 'flag']) {
+    const th = document.createElement('th');
+    th.textContent = h;
+    head.appendChild(th);
+  }
+  for (const r of rows) {
+    const tr = t.insertRow();
+    const cells = [r.name, r.kind, r.peak.toFixed(3), r.peakDb.toFixed(1), r.rms.toFixed(3), r.rmsDb.toFixed(1), r.rmsMax.toFixed(3), r.dur.toFixed(2), r.error || r.flag || 'ok'];
+    cells.forEach((c, i) => {
+      const td = tr.insertCell();
+      td.textContent = c;
+      if (i === cells.length - 1) td.className = r.error || r.flag ? 'flag-bad' : 'flag-ok';
+    });
+  }
+}
+
+const busy = async (label, fn) => {
+  $('runStatus').textContent = `${label}…`;
+  try {
+    const r = await fn();
+    $('runStatus').textContent = `${label}: done`;
+    return r;
+  } catch (err) {
+    $('runStatus').textContent = `${label}: ${err.message || err}`;
+    throw err;
+  }
+};
+$('runAll').addEventListener('click', () => busy('measuring', async () => showRows(await runAll())));
+$('runEngine').addEventListener('click', () => busy('engine checks', async () => { $('engineOut').textContent = JSON.stringify(await engine(), null, 1); }));
+$('runLive').addEventListener('click', () => busy('live checks', async () => { $('engineOut').textContent = JSON.stringify(await live(), null, 1); }));
+
+window.__sfxTest = { runAll, engine, live, preUnlock, spatial, volumeAndMute, loopTransitions, rapidFire, flood, worstCase, musicOffline, analyse, showRows, sfx, Sfx };
+</script>
+</body>
+</html>

@@ -8,6 +8,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   volume: 0.7, // 0 .. 1
   invertY: false,
   difficulty: 'normal', // 'easy' | 'normal' | 'hard'
+  googleTiles: false, // optional Google Photorealistic 3D Tiles view (needs VITE_GOOGLE_MAPS_API_KEY)
 });
 
 export const QUALITY_OPTIONS = ['low', 'medium', 'high'];
@@ -28,6 +29,7 @@ export function sanitizeSettings(raw) {
     volume: num(s.volume, 0, 1, d.volume),
     invertY: typeof s.invertY === 'boolean' ? s.invertY : d.invertY,
     difficulty: DIFFICULTY_OPTIONS.includes(s.difficulty) ? s.difficulty : d.difficulty,
+    googleTiles: s.googleTiles === true,
   };
 }
 

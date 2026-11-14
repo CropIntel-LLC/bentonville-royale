@@ -2,6 +2,33 @@
 
 All models below are CC0 1.0 Universal (public domain). Credit is not required but is given here.
 
+## Weapons (held and floor models): Quaternius "Ultimate Guns Pack" + CircuitZ pickaxe (CC0 1.0)
+
+Replaced the Kenney Blaster Kit stand-ins on 2026-11-14. File names and ids are unchanged.
+
+- Quaternius (https://quaternius.com), "Ultimate Guns Pack": https://poly.pizza/bundle/Ultimate-Guns-Pack-cpgUfI4t2F
+  (bundle page and every model page state "Public Domain (CC0)" / licence "CC0 1.0").
+- CircuitZ, "Pickaxe 1": https://poly.pizza/m/88ZenT8TN0 (model page: "Public Domain (CC0)").
+- Downloaded as GLB from the poly.pizza static CDN linked on each model page.
+- These are generic low-poly real-world firearm types (not modelled on any game's weapons).
+
+| File | Model page | Original GLB |
+| --- | --- | --- |
+| `public/assets/weapons/rifle.glb` | Assault Rifle, https://poly.pizza/m/Bgvuu4CUMV | https://static.poly.pizza/9a0e478c-de82-4773-9b70-a0219bb0057c.glb |
+| `public/assets/weapons/smg.glb` | Submachine Gun, https://poly.pizza/m/7ehatxr7FY | https://static.poly.pizza/fb8ae707-d5b9-4eb8-ab8c-1c78d3c1f710.glb |
+| `public/assets/weapons/shotgun.glb` | Shotgun (pump), https://poly.pizza/m/ZmPTnh7njL | https://static.poly.pizza/f71d6771-f512-4374-bd23-ba00b564db68.glb |
+| `public/assets/weapons/sniper.glb` | Sniper Rifle, https://poly.pizza/m/ASOMZIErq3 | https://static.poly.pizza/f03e21b7-e3b7-49fd-b47d-d1908649fcee.glb |
+| `public/assets/weapons/pistol.glb` | Pistol, https://poly.pizza/m/J3i9KDQ3kt | https://static.poly.pizza/f5a88c73-af97-49ca-8650-4bde579d2f80.glb |
+| `public/assets/weapons/pickaxe.glb` | Pickaxe 1 (CircuitZ), https://poly.pizza/m/88ZenT8TN0 | https://static.poly.pizza/18ca56b7-33b7-42e8-b6e9-b836ae4533bd.glb |
+
+Modifications (gltf-transform, scripted): node transforms baked into the vertices; guns rotated so the
+barrel points to -Z with the grip at model (0, -0.014, 0.152) and scaled to an in-hand length
+(rifle 1.15 m, SMG 0.85 m, shotgun 1.2 m, sniper 1.6 m, pistol 0.45 m at Character's x1.45), widened 1.5x
+across the barrel for readability at third-person distance; base colours lifted (0.07 + 2.6 x linear) so
+the near-black materials read under the toon shader; metalness 0, roughness 0.65; dedup/weld/prune.
+Pickaxe: scaled to 1.6 units tall (Y) and 1.6x in X/Z, origin moved to the grip 0.4 above the handle end.
+`manifest.json` records bounds, grip and muzzle for each file.
+
 ## Kenney asset kits (CC0 1.0)
 
 - Author: Kenney (https://kenney.nl)
@@ -12,11 +39,6 @@ All models below are CC0 1.0 Universal (public domain). Credit is not required b
 
 | File | Pack | Original model |
 | --- | --- | --- |
-| `public/assets/weapons/rifle.glb` | Blaster Kit | `blaster-p.glb` |
-| `public/assets/weapons/shotgun.glb` | Blaster Kit | `blaster-h.glb` |
-| `public/assets/weapons/smg.glb` | Blaster Kit | `blaster-j.glb` |
-| `public/assets/weapons/sniper.glb` | Blaster Kit | `blaster-f.glb` |
-| `public/assets/weapons/pistol.glb` | Blaster Kit | `blaster-c.glb` |
 | `public/assets/loot/ammo.glb` | Blaster Kit | `crate-medium.glb` |
 | `public/assets/loot/chest.glb` | Mini Dungeon | `chest.glb` |
 | `public/assets/loot/potion.glb` | Mini Dungeon | `potion.glb` |
@@ -25,14 +47,4 @@ All models below are CC0 1.0 Universal (public domain). Credit is not required b
 
 Files are byte-identical copies of the mirror's GLBs, renamed.
 
-## KayKit: Adventurers Character Pack 1.0 (CC0 1.0)
-
-- Author: Kay Lousberg (https://www.kaylousberg.com)
-- Source: https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0 (branch `main`, via jsDelivr), folder `addons/kaykit_character_pack_adventures/Assets/gltf/`
-- License evidence: `addons/kaykit_character_pack_adventures/LICENSE.txt` (copy kept at `_dl/weapons/kaykit_adv/LICENSE.txt`): "License: (Creative Commons Zero, CC0) ... This content is free to use in personal, educational and commercial projects."
-
-| File | Original files |
-| --- | --- |
-| `public/assets/weapons/pickaxe.glb` | `axe_2handed.gltf` + `axe_2handed.bin` + `barbarian_texture.png`, packed unmodified into a single GLB |
-
-Note: this is a two-handed axe standing in for a pickaxe; no CC0 pickaxe model was found in the reachable sources.
+(The Kenney Blaster Kit guns and the KayKit two-handed axe that used to stand in for the weapons are no longer shipped.)

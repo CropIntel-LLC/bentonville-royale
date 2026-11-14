@@ -6,6 +6,17 @@
 //   node scripts/fetch-map-data.mjs            # cache-first: no network if all tiles are cached
 //   node scripts/fetch-map-data.mjs --refresh  # discard the cache and download again
 //
+// Map data usage notes:
+//   - `npm run fetch-map` runs the same thing. A full download is 21 requests
+//     (20 tiles + 1 relation) and takes about a minute; do not lower PAUSE_MS or
+//     raise MAX_REQUESTS, and do not run it in parallel (OSM API usage policy).
+//   - With a warm cache the run is offline and deterministic: the output is
+//     byte-identical, so it is safe to re-run after changing the processing code.
+//   - data-raw/ is gitignored. Only public/data/bentonville-osm.json and
+//     credits/map-data.md are meant to be committed; both are rewritten each run
+//     (the "Downloaded" date comes from data-raw/fetch-meta.json, not the clock).
+//   - A failed download writes no output and keeps the tiles it got; re-run to resume.
+//
 // Coordinates: local meters around ORIGIN, x = east, z = SOUTH (north is -z),
 // equirectangular, rounded to 0.1 m.
 // Polygon winding (buildings + areas): counter-clockwise as seen on a north-up
@@ -14,8 +25,8 @@
 //
 // Map data (c) OpenStreetMap contributors, ODbL 1.0.
 
-import { readFile, writeFile, mkdir, rm } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { readFile, writeFile, mkdir, rm, rename } from 'node:fs/promises';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -548,10 +559,124 @@ function areaKind(tags) {
   if (tags.leisure === 'garden') return 'garden';
   if (tags.leisure === 'park' || tags.leisure === 'playground' || tags.landuse === 'recreation_ground') return 'park';
   if (tags.amenity === 'parking') return tags.parking === 'underground' ? null : 'parking';
+  // landuse=meadow stays 'grass' (as before, for backward compatibility)
   if (tags.landuse === 'grass' || tags.landuse === 'meadow') return 'grass';
+  if (tags.natural === 'grassland' || tags.natural === 'heath') return 'meadow';
+  if (tags.natural === 'scrub' || tags.natural === 'shrubbery') return 'scrub';
+  if (LANDUSE_KINDS.has(tags.landuse)) return tags.landuse;
   return null;
 }
-const AREA_ORDER = ['wood', 'park', 'water', 'parking', 'grass', 'pitch', 'garden'];
+const LANDUSE_KINDS = new Set(['residential', 'commercial', 'retail', 'industrial', 'farmland']);
+// broad land-use zones first, so the specific covers drawn/looked-up later win
+const AREA_ORDER = ['residential', 'commercial', 'retail', 'industrial', 'farmland', 'meadow', 'scrub', 'wood', 'park', 'water', 'parking', 'grass', 'pitch', 'garden'];
+
+// ------------------------------------------------------------ extra building tags
+
+const ROOF_SHAPES = {
+  flat: 'flat', gabled: 'gable', gable: 'gable', hipped: 'hip', hip: 'hip', 'half-hipped': 'hip', side_hipped: 'hip',
+  pyramidal: 'pyramid', skillion: 'skillion', lean_to: 'skillion', dome: 'dome', onion: 'dome', gambrel: 'gambrel',
+  mansard: 'mansard', round: 'round', saltbox: 'gable', sawtooth: 'skillion', cone: 'pyramid',
+};
+// residential-looking footprints get a pitched roof when untagged
+const PITCHED_TYPES = new Set(['house', 'detached', 'residential', 'semidetached_house', 'bungalow', 'cabin', 'terrace', 'garage', 'garages', 'shed', 'farm', 'barn', 'church', 'chapel', 'hut', 'static_caravan']);
+function roofShape(id, t, tags, area, overture) {
+  const tagged = ROOF_SHAPES[String(tags['roof:shape'] || '').toLowerCase()];
+  if (tagged) return { roof: tagged, src: 'osm' };
+  const ov = overture && ROOF_SHAPES[String(overture.roof || '').toLowerCase()];
+  if (ov) return { roof: ov, src: 'overture' };
+  const small = area <= (t === 'yes' ? 260 : 450);
+  if (small && (PITCHED_TYPES.has(t) || t === 'yes')) return { roof: hash01(id, 3) < 0.6 ? 'gable' : 'hip', src: 'est' };
+  return { roof: 'flat', src: 'est' };
+}
+
+const NAMED_COLOURS = {
+  white: '#f2f2ee', black: '#2b2b2b', grey: '#8f8f8f', gray: '#8f8f8f', lightgrey: '#c8c8c8', lightgray: '#c8c8c8', darkgrey: '#5a5a5a', darkgray: '#5a5a5a',
+  silver: '#c0c0c0', red: '#a8443a', darkred: '#7a2a24', maroon: '#6e2a2a', brown: '#7b5a3e', tan: '#c9ae86', beige: '#d9cdb0', cream: '#efe6cc',
+  yellow: '#e2c45a', orange: '#d27a3c', green: '#5f8a4e', darkgreen: '#3e5e34', blue: '#4f6f9a', lightblue: '#9fb9d4', navy: '#2e3f5e',
+};
+function normColour(v) {
+  if (!v) return null;
+  const s = String(v).trim().toLowerCase().replace(/\s+/g, '');
+  if (/^#[0-9a-f]{6}$/.test(s)) return s;
+  if (/^#[0-9a-f]{3}$/.test(s)) return '#' + [...s.slice(1)].map((c) => c + c).join('');
+  return NAMED_COLOURS[s] || null;
+}
+
+// ------------------------------------------------------------ Overture heights
+// data-raw/overture/buildings.json is written by scripts/fetch-overture.py. When
+// present, an OSM building takes its height from the Overture building that
+// carries the same OSM id or that overlaps it (IoU >= 0.5 on a 1 m sample grid).
+
+function loadOverture() {
+  const file = path.join(RAW_DIR, 'overture', 'buildings.json');
+  if (!existsSync(file)) return null;
+  const j = JSON.parse(readFileSync(file, 'utf8'));
+  const list = [];
+  for (const b of j.buildings) {
+    for (const ring of b.rings) {
+      const p = ring.map(([lon, lat]) => project(lat, lon));
+      if (p.length > 1 && dist(p[0], p[p.length - 1]) < 1e-6) p.pop();
+      if (p.length < 3) continue;
+      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      for (const q of p) { minX = Math.min(minX, q[0]); maxX = Math.max(maxX, q[0]); minZ = Math.min(minZ, q[1]); maxZ = Math.max(maxZ, q[1]); }
+      list.push({ b, p, minX, maxX, minZ, maxZ, area: Math.abs(shoelace(p)) });
+    }
+  }
+  const byOsm = new Map();
+  for (const o of list) if (o.b.osm) byOsm.set(o.b.osm.split('@')[0], o);
+  const CELL = 50;
+  const grid = new Map();
+  for (const o of list) {
+    for (let gx = Math.floor(o.minX / CELL); gx <= Math.floor(o.maxX / CELL); gx++) {
+      for (let gz = Math.floor(o.minZ / CELL); gz <= Math.floor(o.maxZ / CELL); gz++) {
+        const k = gx + ',' + gz;
+        if (!grid.has(k)) grid.set(k, []);
+        grid.get(k).push(o);
+      }
+    }
+  }
+  const near = (minX, maxX, minZ, maxZ) => {
+    const out = new Set();
+    for (let gx = Math.floor(minX / CELL); gx <= Math.floor(maxX / CELL); gx++) for (let gz = Math.floor(minZ / CELL); gz <= Math.floor(maxZ / CELL); gz++) for (const o of grid.get(gx + ',' + gz) || []) out.add(o);
+    return [...out];
+  };
+  return { release: j.release, fetchedAt: j.fetchedAt, count: j.count, byOsm, near };
+}
+
+/** Intersection-over-union of two rings, estimated on a sample grid (~1 m). */
+function iou(a, b) {
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const q of a.concat(b)) { minX = Math.min(minX, q[0]); maxX = Math.max(maxX, q[0]); minZ = Math.min(minZ, q[1]); maxZ = Math.max(maxZ, q[1]); }
+  const step = Math.max(1, Math.sqrt(((maxX - minX) * (maxZ - minZ)) / 4000));
+  let inter = 0;
+  let uni = 0;
+  for (let x = minX + step / 2; x < maxX; x += step) {
+    for (let z = minZ + step / 2; z < maxZ; z += step) {
+      const ia = pointInPoly([x, z], a);
+      const ib = pointInPoly([x, z], b);
+      if (ia || ib) uni++;
+      if (ia && ib) inter++;
+    }
+  }
+  return uni ? inter / uni : 0;
+}
+
+/** Overture height for an OSM building: { h, src, floors, ov } or null. */
+function overtureMatch(OV, osmKey, ring) {
+  if (!OV) return null;
+  let o = OV.byOsm.get(osmKey);
+  if (!o) {
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const q of ring) { minX = Math.min(minX, q[0]); maxX = Math.max(maxX, q[0]); minZ = Math.min(minZ, q[1]); maxZ = Math.max(maxZ, q[1]); }
+    let best = 0.5;
+    for (const c of OV.near(minX, maxX, minZ, maxZ)) {
+      if (c.maxX < minX || c.minX > maxX || c.maxZ < minZ || c.minZ > maxZ) continue;
+      const v = iou(ring, c.p);
+      if (v >= best) { best = v; o = c; }
+    }
+  }
+  return o || null;
+}
 
 // ------------------------------------------------------------------ landmarks
 // `pats` are tried in order; the first pattern with a usable match gives the
@@ -574,7 +699,7 @@ const LANDMARKS = [
 
 // ------------------------------------------------------------------- pipeline
 
-function build(raw, rawMeta) {
+function build(raw, rawMeta, OV) {
   // ---- index elements (the response can list an element twice: body + skel)
   const nodes = new Map();
   const ways = new Map();
@@ -637,16 +762,43 @@ function build(raw, rawMeta) {
   // ---- buildings
   const buildings = [];
   const buildingWayIds = new Set();
-  const pushBuilding = (id, tags, rawRing) => {
-    if (tags.location === 'underground') return;
+  const dropped = { unclosed: 0, underground: 0, degenerate: 0, tiny: 0, outside: 0 }; // console only
+  const hsCount = { osm: 0, overture: 0, part: 0, est: 0 };
+  const roofCount = {};
+  const ovStats = { matchedById: 0, matchedByOverlap: 0, unmatched: 0, heightSources: {} };
+  const pushBuilding = (id, tags, rawRing, osmKey) => {
+    if (tags.location === 'underground') return void dropped.underground++;
     const ring = finishRing(simplifyRing(rawRing));
-    if (!ring) return;
+    if (!ring) return void dropped.degenerate++;
     const a = Math.abs(shoelace(ring));
-    if (a < 8) return;
+    if (a < 8) return void dropped.tiny++;
     const c = centroid(ring);
-    if (!inClip(c)) return; // footprint centred outside the bbox
+    if (!inClip(c)) return void dropped.outside++; // footprint centred outside the bbox
     const t = String(tags.building).toLowerCase();
-    const { h, lv } = buildingHeight(id, t, tags, a);
+    let { h, lv } = buildingHeight(id, t, tags, a);
+    const lvTag = parseFloat(tags['building:levels']);
+    const tagged = parseLen(tags.height) != null || parseLen(tags['building:height']) != null || (Number.isFinite(lvTag) && lvTag > 0);
+    let hs = tagged ? 'osm' : 'est';
+    // Overture: same OSM id first, else best footprint overlap
+    const ovm = overtureMatch(OV, osmKey, ring);
+    const ov = ovm ? ovm.b : null;
+    if (OV) {
+      if (!ovm) ovStats.unmatched++;
+      else if (ov.osm && ov.osm.split('@')[0] === osmKey) ovStats.matchedById++;
+      else ovStats.matchedByOverlap++;
+    }
+    if (!tagged && ov && (ov.h >= 2 || ov.floors > 0)) {
+      if (ov.h >= 2) { // sub-2 m Microsoft ML heights are noise
+        h = r1(clamp(ov.h, 3, 40));
+        lv = ov.floors > 0 ? Math.max(1, Math.round(ov.floors)) : Math.max(1, Math.round((h - 1) / 3.5));
+      } else {
+        h = r1(clamp(ov.floors * 3.3, 3, 40));
+        lv = Math.max(1, Math.round(ov.floors));
+      }
+      hs = 'overture';
+      const k = ov.hsrc || (ov.src || []).join('+') || 'unknown';
+      ovStats.heightSources[k] = (ovStats.heightSources[k] || 0) + 1;
+    }
     const b = { id, t };
     if (tags.name) b.n = tags.name;
     b.h = h;
@@ -654,13 +806,30 @@ function build(raw, rawMeta) {
     b.mat = buildingMaterial(t, tags, a);
     b.a = Math.round(a);
     b.p = ring;
+    // ---- added fields (wave 1): all optional except roof + hs
+    b.hs = hs;
+    const rs = roofShape(id, t, tags, a, ov);
+    b.roof = rs.roof;
+    roofCount[rs.roof] = (roofCount[rs.roof] || 0) + 1;
+    const minH = parseLen(tags.min_height) ?? (ov && ov.minH > 0 ? ov.minH : null);
+    if (minH != null && minH > 0 && minH < h - 1) b.minH = r1(minH);
+    const rh = parseLen(tags['roof:height']) ?? (ov && ov.roofH > 0 ? ov.roofH : null);
+    if (rh != null && rh > 0 && rh < h) b.roofH = r1(rh);
+    const col = normColour(tags['building:colour']) || normColour(ov && ov.facade);
+    if (col) b.colour = col;
+    const rcol = normColour(tags['roof:colour']) || normColour(ov && ov.roofColor);
+    if (rcol) b.roofColour = rcol;
     buildings.push(b);
   };
   for (const id of sortedIds(ways)) {
     const w = ways.get(id);
-    if (!w.tags || !w.tags.building || w.tags.building === 'no' || !wayClosed(w)) continue;
+    if (!w.tags || !w.tags.building || w.tags.building === 'no') continue;
+    if (!wayClosed(w)) {
+      dropped.unclosed++;
+      continue;
+    }
     buildingWayIds.add(id);
-    pushBuilding(id, w.tags, wayPts(w));
+    pushBuilding(id, w.tags, wayPts(w), 'w' + id);
   }
   let multiOuterBuildingRels = 0;
   for (const id of sortedIds(rels)) {
@@ -671,9 +840,46 @@ function build(raw, rawMeta) {
     if (outerIds.length === 1 && buildingWayIds.has(outerIds[0])) continue;
     const rings = relOuterRings(r);
     if (rings.length > 1) multiOuterBuildingRels++;
-    for (const ring of rings) pushBuilding(id, r.tags, ring);
+    for (const ring of rings) pushBuilding(id, r.tags, ring, 'r' + id);
   }
   buildings.sort((a, b) => a.id - b.id || a.p[0][0] - b.p[0][0] || a.p[0][1] - b.p[0][1]);
+
+  // ---- building:part ways (3D sub-volumes of an outline). Written to their own
+  // array so the outlines in `buildings` stay non-overlapping. An outline with no
+  // height of its own takes the tallest part inside it.
+  const buildingParts = [];
+  for (const id of sortedIds(ways)) {
+    const w = ways.get(id);
+    if (!w.tags || !w.tags['building:part'] || w.tags['building:part'] === 'no' || !wayClosed(w)) continue;
+    const ring = finishRing(simplifyRing(wayPts(w)));
+    if (!ring || Math.abs(shoelace(ring)) < 4 || !inClip(centroid(ring))) continue;
+    const tags = w.tags;
+    const tagH = parseLen(tags.height) ?? parseLen(tags['building:height']);
+    const lvT = parseFloat(tags['building:levels']);
+    const h = r1(clamp(tagH ?? (Number.isFinite(lvT) && lvT > 0 ? lvT * 3.5 + 1 : 4), 1, 60));
+    const part = { id, h };
+    const minH = parseLen(tags.min_height);
+    if (minH != null && minH > 0 && minH < h) part.minH = r1(minH);
+    if (Number.isFinite(lvT) && lvT > 0) part.lv = lvT;
+    part.roof = ROOF_SHAPES[String(tags['roof:shape'] || '').toLowerCase()] || 'flat';
+    const col = normColour(tags['building:colour']);
+    if (col) part.colour = col;
+    const rcol = normColour(tags['roof:colour']);
+    if (rcol) part.roofColour = rcol;
+    part.p = ring;
+    buildingParts.push(part);
+  }
+  for (const b of buildings) {
+    if (b.hs === 'osm') continue;
+    let top = 0;
+    for (const part of buildingParts) if (pointInPoly(centroid(part.p), b.p)) top = Math.max(top, part.h);
+    if (top > 0) {
+      b.h = r1(clamp(top, 3, 40));
+      b.lv = Math.max(1, Math.round((b.h - 1) / 3.5));
+      b.hs = 'part';
+    }
+  }
+  for (const b of buildings) hsCount[b.hs]++;
 
   // ---- roads
   const roads = [];
@@ -688,6 +894,11 @@ function build(raw, rawMeta) {
       if (w.tags.name) r.n = w.tags.name;
       r.w = roadWidth(k, w.tags);
       r.p = p;
+      // added fields (wave 1): present only when tagged
+      if (w.tags.bridge && w.tags.bridge !== 'no') r.bridge = 1;
+      if (w.tags.tunnel && w.tags.tunnel !== 'no') r.tunnel = w.tags.tunnel === 'building_passage' ? 'building_passage' : 1;
+      const layer = parseInt(w.tags.layer, 10);
+      if (Number.isFinite(layer) && layer !== 0) r.layer = layer;
       roads.push(r);
     }
   }
@@ -805,23 +1016,55 @@ function build(raw, rawMeta) {
     addFeat('relation', id, r.tags, { c: centroid(rings[0]), pts: rings[0], poly: true, area: Math.abs(shoelace(rings[0])), rings });
   }
 
+  /**
+   * The part of a feature that lies inside the map: { c, pts, area }, or null if
+   * none of it does. A polygon that straddles the bbox edge (Memorial Park, the
+   * Walmart Home Office campus) is clipped, so its position is the centre of the
+   * part that is actually playable rather than a point near or beyond the edge.
+   */
+  const inMap = (f) => {
+    if (f.map !== undefined) return f.map;
+    if (!f.poly) return (f.map = inClip(f.c) ? { c: f.c, pts: f.pts, area: 0 } : null);
+    let best = null;
+    for (const ring of f.rings || [f.pts]) {
+      const part = clipRing(ring);
+      if (part.length < 3) continue;
+      const area = Math.abs(shoelace(part));
+      if (area >= 1 && (!best || area > best.area)) best = { c: centroid(part), pts: part, area };
+    }
+    return (f.map = best);
+  };
+
   // ---- POIs
   const pois = [];
   for (const f of feats) {
     if (!f.tags.name) continue;
     const key = POI_KEYS.find((k) => f.tags[k] && f.tags[k] !== 'no');
-    if (!key || !inClip(f.c)) continue;
+    if (!key) continue;
     if (f.type === 'way' && f.tags.highway && !f.poly) continue; // named roads are not POIs
-    pois.push({ n: f.tags.name, k: `${key}=${f.tags[key]}`, x: r1(f.c[0]), z: r1(f.c[1]) });
+    const g = inMap(f);
+    if (!g) continue;
+    pois.push({ n: f.tags.name, k: `${key}=${f.tags[key]}`, x: r1(g.c[0]), z: r1(g.c[1]) });
   }
   pois.sort((a, b) => (a.n < b.n ? -1 : a.n > b.n ? 1 : 0) || (a.k < b.k ? -1 : a.k > b.k ? 1 : 0) || a.x - b.x || a.z - b.z);
 
   // ---- landmarks
+  // Member ways of a route, following route_master -> route nesting (the Slaughter
+  // Pen trail network is one route_master whose members are ~60 named mtb routes).
+  const routeWays = (rel, depth = 0) => {
+    const out = [];
+    for (const m of rel.members || []) {
+      if (m.type === 'way') out.push(m.ref);
+      else if (m.type === 'relation' && depth < 3 && rels.has(m.ref)) out.push(...routeWays(rels.get(m.ref), depth + 1));
+    }
+    return out;
+  };
+  const isRoadWay = (id) => ways.has(id) && (ways.get(id).tags?.highway ?? '') in ROAD_WIDTH; // i.e. it is in `roads`
   const routeWayIdsByRel = [];
   for (const id of sortedIds(rels)) {
     const r = rels.get(id);
-    if (r.tags && r.tags.type === 'route' && r.tags.name) {
-      routeWayIdsByRel.push({ name: [r.tags.name, r.tags.alt_name, r.tags.official_name].filter(Boolean).join(' | '), ways: (r.members || []).filter((m) => m.type === 'way').map((m) => m.ref) });
+    if (r.tags && (r.tags.type === 'route' || r.tags.type === 'route_master') && r.tags.name) {
+      routeWayIdsByRel.push({ name: [r.tags.name, r.tags.alt_name, r.tags.official_name].filter(Boolean).join(' | '), ways: routeWays(r) });
     }
   }
   const bCentroid = new Map(buildings.map((b) => [b, centroid(b.p)]));
@@ -836,12 +1079,13 @@ function build(raw, rawMeta) {
     if (spec.line) {
       // trail-type landmark: all matching highway ways + members of matching route relations
       const wayIds = new Set();
-      for (const f of feats) if (f.type === 'way' && f.tags.highway && matchAny(f.names)) wayIds.add(f.id);
-      for (const rr of routeWayIdsByRel) if (matchAny([rr.name])) for (const id of rr.ways) if (ways.has(id) && ways.get(id).tags?.highway) wayIds.add(id);
+      for (const f of feats) if (f.type === 'way' && isRoadWay(f.id) && matchAny(f.names)) wayIds.add(f.id);
+      for (const rr of routeWayIdsByRel) if (matchAny([rr.name])) for (const id of rr.ways) if (isRoadWay(id)) wayIds.add(id);
       let pts = [];
       for (const id of [...wayIds].sort((a, b) => a - b)) for (const piece of clipLine(wayPts(ways.get(id)))) pts.push(...piece);
+      if (pts.length) console.log(`  landmark ${spec.key}: ${wayIds.size} trail way(s)`);
       // also accept named non-highway features (trailhead nodes, parks) if no ways matched
-      if (!pts.length) for (const f of feats) if (matchAny(f.names) && inClip(f.c)) pts.push(f.c);
+      if (!pts.length) for (const f of feats) if (matchAny(f.names) && inMap(f)) pts.push(inMap(f).c);
       if (!pts.length) {
         landmarks[spec.key] = est();
         continue;
@@ -858,10 +1102,10 @@ function build(raw, rawMeta) {
     const cands = feats.filter((f) => !(f.type === 'way' && f.tags.highway && !f.poly) && matchAny(f.names));
     let primary = null;
     for (const re of spec.pats) {
-      const hit = cands.filter((f) => f.names.some((s) => re.test(s)) && inClip(f.c));
+      const hit = cands.filter((f) => f.names.some((s) => re.test(s)) && inMap(f));
       if (!hit.length) continue;
-      // prefer the largest polygon, else the lowest-id node
-      hit.sort((a, b) => (b.poly ? b.area : -1) - (a.poly ? a.area : -1) || a.id - b.id);
+      // prefer the largest polygon (by the area that is inside the map), else the lowest-id node
+      hit.sort((a, b) => (b.poly ? inMap(b).area : -1) - (a.poly ? inMap(a).area : -1) || a.id - b.id);
       primary = hit[0];
       break;
     }
@@ -869,16 +1113,18 @@ function build(raw, rawMeta) {
       landmarks[spec.key] = est();
       continue;
     }
+    const g = inMap(primary);
     const polys = cands.filter((f) => f.poly).flatMap((f) => f.rings || [f.pts]);
     const ids = new Set();
     for (const b of buildings) {
       if (b.n && matchAny([b.n])) ids.add(b.id);
       else if (polys.some((ring) => pointInPoly(bCentroid.get(b), ring))) ids.add(b.id);
+      else if (!primary.poly && pointInPoly(g.c, b.p)) ids.add(b.id); // the building a point-type landmark stands in
     }
     let r = 20;
-    if (primary.poly) r = Math.max(...primary.pts.map((p) => dist(p, primary.c)));
-    for (const b of buildings) if (ids.has(b.id)) for (const p of b.p) r = Math.max(r, Math.min(dist(p, primary.c), 600));
-    landmarks[spec.key] = { n: spec.n, x: r1(primary.c[0]), z: r1(primary.c[1]), r: Math.round(r), found: true, ids: [...ids].sort((a, b) => a - b) };
+    if (primary.poly) r = Math.max(...g.pts.map((p) => dist(p, g.c)));
+    for (const b of buildings) if (ids.has(b.id)) for (const p of b.p) r = Math.max(r, Math.min(dist(p, g.c), 600));
+    landmarks[spec.key] = { n: spec.n, x: r1(g.c[0]), z: r1(g.c[1]), r: Math.round(r), found: true, ids: [...ids].sort((a, b) => a - b) };
     console.log(`  landmark ${spec.key}: matched ${primary.type}/${primary.id} "${primary.names[0]}"`);
   }
 
@@ -901,6 +1147,7 @@ function build(raw, rawMeta) {
       bbox: BBOX,
       bounds,
       attribution: '© OpenStreetMap contributors (ODbL)',
+      heights: OV ? { overture: OV.release, ...ovStats } : null,
       generated,
       counts: {
         buildings: buildings.length,
@@ -912,6 +1159,10 @@ function build(raw, rawMeta) {
         treeRows,
         treeRowPts,
         pois: pois.length,
+        buildingParts: buildingParts.length,
+        heightSource: hsCount,
+        roofs: roofCount,
+        bridges: roads.filter((r) => r.bridge).length,
         landmarksFound: Object.values(landmarks).filter((l) => l.found).length,
       },
     },
@@ -922,8 +1173,9 @@ function build(raw, rawMeta) {
     trees,
     pois,
     landmarks,
+    buildingParts,
   };
-  return { out, info: { multiOuterBuildingRels, nodes: nodes.size, ways: ways.size, rels: rels.size } };
+  return { out, info: { multiOuterBuildingRels, dropped, nodes: nodes.size, ways: ways.size, rels: rels.size } };
 }
 
 // ----------------------------------------------------------------------- main
@@ -939,15 +1191,29 @@ async function main() {
     console.error('No output written (tiles already downloaded stay cached; re-run to resume).');
     process.exit(1);
   }
-  const { out, info } = build(loaded.raw, loaded.meta);
+  const OV = loadOverture();
+  if (OV) console.log(`Overture buildings: ${OV.count} (release ${OV.release})`);
+  else console.log('No data-raw/overture/buildings.json: heights are OSM tags + estimates (run scripts/fetch-overture.py)');
+  const { out, info } = build(loaded.raw, loaded.meta, OV);
   const json = JSON.stringify(out);
   await mkdir(path.dirname(OUT_FILE), { recursive: true });
-  await writeFile(OUT_FILE, json + '\n');
+  // write-then-rename so a dev server or another process never reads a half-written file
+  await writeFile(OUT_FILE + '.tmp', json + '\n');
+  await rename(OUT_FILE + '.tmp', OUT_FILE);
   // credits are regenerated from the same metadata so the date/bbox never drift
   await mkdir(path.dirname(CREDITS_FILE), { recursive: true });
+  const rawDate = (f, k = 'fetchedAt') => {
+    try {
+      return JSON.parse(readFileSync(path.join(RAW_DIR, f), 'utf8'))[k] || 'not yet fetched';
+    } catch {
+      return 'not yet fetched';
+    }
+  };
   await writeFile(
     CREDITS_FILE,
     `# Map data
+
+## OpenStreetMap (streets, buildings, land cover, points of interest)
 
 The street, building, land-cover and point-of-interest data in
 \`public/data/bentonville-osm.json\` is © OpenStreetMap contributors and is
@@ -957,13 +1223,47 @@ https://www.openstreetmap.org/copyright
 - Source: OpenStreetMap API v0.6 map call (${API}/map), downloaded as tiles
 - Downloaded: ${out.meta.generated}
 - Bounding box (south, west, north, east): ${BBOX.join(', ')}
-- Processed by \`scripts/fetch-map-data.mjs\` (projection to local meters, simplification, inferred heights/materials)
+- Processed by \`scripts/fetch-map-data.mjs\` (projection to local meters, simplification, inferred heights/materials/roof shapes)
+
+## Overture Maps Foundation (building heights)
+
+Building heights (\`h\` where \`hs\` is \"overture\") come from the Overture Maps
+buildings theme, release ${OV ? OV.release : 'n/a'}, which is licensed under the
+ODbL 1.0 (https://docs.overturemaps.org/attribution/). Most of these heights are
+Overture's conflation of Microsoft Global ML Building Footprints (ODbL) onto the
+OpenStreetMap footprints.
+© OpenStreetMap contributors, Overture Maps Foundation, Microsoft.
+
+- Source: s3://overturemaps-us-west-2/release/${OV ? OV.release : '<release>'}/theme=buildings (public GeoParquet), queried by \`scripts/fetch-overture.py\`
+- Queried: ${OV ? OV.fetchedAt : 'not yet fetched'}
+
+## USGS 3D Elevation Program (terrain)
+
+\`public/data/bentonville-terrain.bin\` / \`.json\` are resampled from the USGS 3DEP
+best-available DEM (1 m lidar, AR Benton County 2015 project). USGS data is in
+the public domain. Courtesy of the U.S. Geological Survey.
+
+- Source: https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer (exportImage), via \`scripts/fetch-terrain.mjs\`
+- Fetched: ${rawDate('terrain/fetch-meta.json')}
+
+## USDA NAIP imagery via USGS The National Map (tree canopy, ground tint)
+
+\`public/data/bentonville-trees.json\` (tree positions) and
+\`public/data/bentonville-ground.webp\` (posterized ground colours) are derived
+from National Agriculture Imagery Program (NAIP) aerial imagery, a USDA Farm
+Service Agency product served by USGS The National Map. Public domain.
+Imagery courtesy of USDA FSA and the U.S. Geological Survey.
+
+- Source: https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPImagery/ImageServer (exportImage), via \`scripts/fetch-imagery.mjs\`
+- Fetched: ${rawDate('naip/fetch-meta.json')}
 `,
   );
   const c = out.meta.counts;
   console.log(`Raw: ${info.nodes} nodes, ${info.ways} ways, ${info.rels} relations`);
   console.log(`Wrote ${path.relative(ROOT, OUT_FILE)}: ${(Buffer.byteLength(json) / 1e6).toFixed(2)} MB`);
   console.log(`  buildings ${c.buildings}, roads ${c.roads}, areas ${c.areas}, waterways ${c.waterways}, trees ${c.trees} (${c.treeNodes} nodes + ${c.treeRowPts} from ${c.treeRows} rows), pois ${c.pois}`);
+  const d = info.dropped;
+  console.log(`  buildings left out: ${d.outside} centred outside the bbox, ${d.tiny} under 8 m2, ${d.degenerate} degenerate, ${d.unclosed} unclosed, ${d.underground} underground`);
   if (info.multiOuterBuildingRels) console.log(`  note: ${info.multiOuterBuildingRels} building relation(s) have several outer rings (one entry per ring, same id)`);
   for (const [k, l] of Object.entries(out.landmarks)) console.log(`  landmark ${k.padEnd(16)} ${l.found ? 'found  ' : 'MISSING'} x=${l.x} z=${l.z} r=${l.r} ids=${l.ids.length}`);
 }

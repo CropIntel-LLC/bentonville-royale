@@ -2,7 +2,9 @@
  * Sfx.js — fully synthesized sound effects, ambient loops and music.
  *
  * Web Audio API only: every sound is built at runtime from oscillators, noise
- * buffers, filters and envelopes. No audio files, no network, no dependencies.
+ * buffers, filters and envelopes. Weapon/impact sounds may also carry recorded
+ * CC0 samples (public/assets/sfx, credits/audio.md) that are fetched + decoded
+ * on unlock and preferred when ready; the synth recipe is always the fallback.
  *
  *   import { sfx } from './audio/Sfx.js';
  *   window.addEventListener('pointerdown', () => sfx.unlock());
@@ -77,6 +79,30 @@ function makeNoiseBuffers(ctx) {
       }
     }),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Output guard. The compressor's 4 ms attack lets transients through, and
+// summed gunshots measured well above full scale, which the sound card would
+// hard-clip. After the compressor the mix gets a fixed trim and then a soft
+// clipper that is exactly linear below CLIP_KNEE and can never exceed 1.0.
+// ---------------------------------------------------------------------------
+
+const OUT_TRIM = 0.8;
+const CLIP_KNEE = 0.75;
+const CLIP_RANGE = 4; // shaper input span: the curve covers -4 .. +4
+
+function makeClipCurve() {
+  const n = 4097; // knots land exactly on 0 and on +/- CLIP_KNEE
+  const curve = new Float32Array(n);
+  const span = 1 - CLIP_KNEE;
+  for (let i = 0; i < n; i++) {
+    const x = ((i / (n - 1)) * 2 - 1) * CLIP_RANGE;
+    const a = Math.abs(x);
+    const y = a <= CLIP_KNEE ? a : CLIP_KNEE + span * Math.tanh((a - CLIP_KNEE) / span);
+    curve[i] = Math.min(1, y) * Math.sign(x);
+  }
+  return curve;
 }
 
 // ---------------------------------------------------------------------------
@@ -254,30 +280,48 @@ const blip = (v, at, f, dur, g, type = 'triangle') => {
 //   vol   base gain            ref/max  full-volume radius / silence radius (m)
 //   roll  falloff exponent     vary     random pitch spread (+/- fraction)
 //   pri   priority multiplier used when voices have to be dropped
+//   sample   optional recorded variants: a URL list (round-robin) or
+//            { key: [urls], default: [urls] } chosen by opts[sampleBy]
+//   sgain    extra gain applied to the sample (balances it against the synth)
+// When a sample is decoded it plays through the same gain / distance lowpass /
+// pan / throttle / voice-steal chain; otherwise the synth recipe `fn` runs.
 // ---------------------------------------------------------------------------
 
 const SOUNDS = Object.create(null);
 const def = (name, cfg, fn) => {
-  SOUNDS[name] = { vol: 1, ref: 8, max: 120, roll: 2, vary: 0.04, pri: 1, ...cfg, fn };
+  SOUNDS[name] = { vol: 1, ref: 8, max: 120, roll: 2, vary: 0.04, pri: 1, ...cfg, name, fn };
 };
+
+// Recorded samples live in public/assets/sfx/<stem>_<n>.mp3 (see credits/audio.md).
+const SAMPLE_BASE = (() => {
+  try {
+    const b = import.meta.env && import.meta.env.BASE_URL;
+    return (typeof b === 'string' && b ? b.replace(/\/?$/, '/') : '/') + 'assets/sfx/';
+  } catch (e) {
+    return '/assets/sfx/';
+  }
+})();
+const smp = (stem, n) => Array.from({ length: n }, (_, i) => `${SAMPLE_BASE}${stem}_${i + 1}.mp3`);
+// surface names the game uses -> sample keys
+const SAMPLE_ALIAS = { brick: 'stone', concrete: 'stone', dirt: 'stone', rock: 'stone', flesh: 'body', player: 'body' };
 
 // --- Weapons ---------------------------------------------------------------
 
-def('shot_rifle', { vol: 0.8, ref: 10, max: 170, roll: 1.7, vary: 0.05, pri: 1.2 }, (v) => {
+def('shot_rifle', { sample: smp('rifle', 3), sgain: 0.72, vol: 0.8, ref: 10, max: 170, roll: 1.7, vary: 0.05, pri: 1.2 }, (v) => {
   v.noise({ dur: 0.2, g: 0.9, a: 0.001, flt: { type: 'lowpass', f: 7000, f2: 700, ft: 0.13, q: 0.7 } });
   v.noise({ dur: 0.03, g: 0.5, a: 0.001, flt: { type: 'highpass', f: 3200 } });
   v.tone({ type: 'triangle', f: 190, f2: 52, ft: 0.09, dur: 0.16, g: 0.85, a: 0.001 });
   v.noise({ type: 'pink', at: 0.03, dur: 0.42, g: 0.16, a: 0.02, flt: { type: 'lowpass', f: 1100, f2: 300 } });
 });
 
-def('shot_smg', { vol: 0.7, ref: 10, max: 140, roll: 1.8, vary: 0.06, pri: 1.1 }, (v) => {
+def('shot_smg', { sample: smp('smg', 3), sgain: 0.95, vol: 0.7, ref: 10, max: 140, roll: 1.8, vary: 0.06, pri: 1.1 }, (v) => {
   v.noise({ dur: 0.075, g: 0.85, a: 0.001, flt: { type: 'bandpass', f: 2600, f2: 1500, q: 0.8 } });
   v.noise({ dur: 0.014, g: 0.45, a: 0.001, flt: { type: 'highpass', f: 5000 } });
   v.tone({ type: 'square', f: 330, f2: 115, ft: 0.04, dur: 0.065, g: 0.3, a: 0.001, flt: { type: 'lowpass', f: 1800 } });
   v.noise({ type: 'pink', at: 0.02, dur: 0.14, g: 0.08, a: 0.01, flt: { type: 'lowpass', f: 1500 } });
 });
 
-def('shot_shotgun', { vol: 0.85, ref: 12, max: 170, roll: 1.7, vary: 0.05, pri: 1.3 }, (v) => {
+def('shot_shotgun', { sample: smp('shotgun', 3), sgain: 1, vol: 0.85, ref: 12, max: 170, roll: 1.7, vary: 0.05, pri: 1.3 }, (v) => {
   v.noise({ dur: 0.4, g: 1.0, a: 0.001, flt: { type: 'lowpass', f: 4200, f2: 280, ft: 0.26, q: 0.5 } });
   v.noise({ dur: 0.045, g: 0.55, a: 0.001, flt: { type: 'highpass', f: 2200 } });
   v.tone({ f: 120, f2: 36, ft: 0.17, dur: 0.3, g: 1.0, a: 0.001 });
@@ -285,7 +329,7 @@ def('shot_shotgun', { vol: 0.85, ref: 12, max: 170, roll: 1.7, vary: 0.05, pri: 
   v.noise({ type: 'brown', at: 0.04, dur: 0.6, g: 0.45, a: 0.03, flt: { type: 'lowpass', f: 600, f2: 150 } });
 });
 
-def('shot_sniper', { vol: 0.85, ref: 14, max: 230, roll: 1.5, vary: 0.04, pri: 1.4 }, (v) => {
+def('shot_sniper', { sample: smp('sniper', 3), sgain: 1, vol: 0.85, ref: 14, max: 230, roll: 1.5, vary: 0.04, pri: 1.4 }, (v) => {
   v.noise({ dur: 0.06, g: 0.95, a: 0.001, flt: { type: 'highpass', f: 1700 } });
   v.noise({ dur: 0.95, g: 0.55, a: 0.001, flt: { type: 'lowpass', f: 6000, f2: 420, ft: 0.55, q: 0.6 } });
   v.tone({ f: 250, f2: 42, ft: 0.22, dur: 0.34, g: 0.9, a: 0.001 });
@@ -293,14 +337,14 @@ def('shot_sniper', { vol: 0.85, ref: 14, max: 230, roll: 1.5, vary: 0.04, pri: 1
   v.noise({ type: 'pink', at: 0.19, dur: 0.5, g: 0.14, a: 0.03, flt: { type: 'bandpass', f: 800, f2: 400, q: 0.6 } });
 });
 
-def('shot_pistol', { vol: 0.75, ref: 10, max: 140, roll: 1.8, vary: 0.05, pri: 1.1 }, (v) => {
+def('shot_pistol', { sample: smp('pistol', 3), sgain: 1, vol: 0.75, ref: 10, max: 140, roll: 1.8, vary: 0.05, pri: 1.1 }, (v) => {
   v.noise({ dur: 0.1, g: 0.8, a: 0.001, flt: { type: 'bandpass', f: 1900, f2: 900, q: 0.7 } });
   v.noise({ dur: 0.018, g: 0.4, a: 0.001, flt: { type: 'highpass', f: 4000 } });
   v.tone({ type: 'triangle', f: 270, f2: 85, ft: 0.055, dur: 0.1, g: 0.65, a: 0.001 });
   v.noise({ type: 'pink', at: 0.02, dur: 0.2, g: 0.09, a: 0.01, flt: { type: 'lowpass', f: 1200 } });
 });
 
-def('reload', { vol: 0.7, ref: 3, max: 25, vary: 0.03 }, (v) => {
+def('reload', { sample: { default: smp('reload', 2), shotgun: smp('pump', 3) }, sampleBy: 'weapon', sgain: 0.56, vol: 0.7, ref: 3, max: 25, vary: 0.03 }, (v) => {
   // magazine out
   tick(v, 0, 1800, 0.03, 0.5);
   v.tone({ type: 'square', f: 220, f2: 150, dur: 0.035, g: 0.15, flt: { type: 'lowpass', f: 1500 } });
@@ -316,19 +360,33 @@ def('reload', { vol: 0.7, ref: 3, max: 25, vary: 0.03 }, (v) => {
   thump(v, 0.68, 240, 150, 0.04, 0.3);
 });
 
-def('empty_click', { vol: 0.6, ref: 3, max: 20, vary: 0.03 }, (v) => {
+// Pump/rack after a shotgun shot or reload: sfx.play('shotgun_pump', { x, y, z })
+def('shotgun_pump', { sample: smp('pump', 3), sgain: 0.58, vol: 0.65, ref: 3, max: 25, vary: 0.03 }, (v) => {
+  // slide back
+  tick(v, 0, 1400, 0.035, 0.5);
+  thump(v, 0, 200, 110, 0.05, 0.35);
+  v.noise({ at: 0.02, dur: 0.12, g: 0.12, env: [[0.04, 1], [0.12, 0]], flt: { type: 'bandpass', f: 900, f2: 1800, q: 1.2 } });
+  // slide forward and lock
+  tick(v, 0.2, 2200, 0.03, 0.6);
+  thump(v, 0.2, 260, 140, 0.05, 0.45);
+  v.tone({ at: 0.2, f: 1600, dur: 0.05, g: 0.07 });
+});
+
+def('empty_click', { sample: smp('empty', 2), sgain: 1, vol: 0.6, ref: 3, max: 20, vary: 0.03 }, (v) => {
   tick(v, 0, 2600, 0.018, 0.6, 'highpass');
   v.tone({ type: 'square', f: 900, f2: 600, dur: 0.015, g: 0.14 });
   tick(v, 0.035, 1500, 0.02, 0.2);
 });
 
-def('weapon_switch', { vol: 0.6, ref: 3, max: 20, vary: 0.04 }, (v) => {
+def('weapon_switch', { sample: smp('equip', 3), sgain: 1, vol: 0.6, ref: 3, max: 20, vary: 0.04 }, (v) => {
   v.noise({ dur: 0.1, g: 0.3, env: [[0.05, 1], [0.1, 0]], flt: { type: 'bandpass', f: 800, f2: 2400, q: 1 } });
   tick(v, 0.09, 2000, 0.025, 0.45);
   v.tone({ at: 0.09, f: 520, f2: 380, dur: 0.045, g: 0.22 });
 });
 
-def('bullet_impact', { vol: 0.6, ref: 5, max: 70, vary: 0.12 }, (v) => {
+def('bullet_impact', {
+  sample: { default: smp('impact_stone', 3), wood: smp('impact_wood', 3), stone: smp('impact_stone', 3), metal: smp('impact_metal', 2), body: smp('impact_body', 2) },
+  sampleBy: 'surface', sgain: 0.6, vol: 0.6, ref: 5, max: 70, vary: 0.12 }, (v) => {
   v.noise({ dur: 0.05, g: 0.6, a: 0.001, flt: { type: 'bandpass', f: 2800, q: 1.5 } });
   v.tone({ f: 420, f2: 140, dur: 0.055, g: 0.35, a: 0.001 });
   v.noise({ type: 'pink', at: 0.01, dur: 0.13, g: 0.18, flt: { type: 'lowpass', f: 1200 } });
@@ -361,14 +419,14 @@ def('elimination', { vol: 0.65, vary: 0.01, pri: 2.5 }, (v) => {
 
 // --- Harvest ---------------------------------------------------------------
 
-def('hit_wood', { vol: 0.75, ref: 6, max: 70, vary: 0.07 }, (v) => {
+def('hit_wood', { sample: smp('harvest_wood', 3), sgain: 1.4, vol: 0.75, ref: 6, max: 70, vary: 0.07 }, (v) => {
   thump(v, 0, 190, 95, 0.13, 0.8);
   v.tone({ type: 'triangle', f: 380, f2: 240, dur: 0.05, g: 0.3, a: 0.001 });
   tick(v, 0, 900, 0.045, 0.5);
   v.noise({ type: 'pink', dur: 0.08, g: 0.25, flt: { type: 'lowpass', f: 400 } });
 });
 
-def('hit_stone', { vol: 0.75, ref: 6, max: 70, vary: 0.07 }, (v) => {
+def('hit_stone', { sample: smp('harvest_stone', 3), sgain: 1.1, vol: 0.75, ref: 6, max: 70, vary: 0.07 }, (v) => {
   tick(v, 0, 1500, 0.03, 0.7, 'highpass');
   v.noise({ dur: 0.08, g: 0.5, a: 0.001, flt: { type: 'bandpass', f: 3200, q: 2 } });
   v.tone({ f: 520, f2: 300, dur: 0.04, g: 0.3, a: 0.001 });
@@ -376,7 +434,7 @@ def('hit_stone', { vol: 0.75, ref: 6, max: 70, vary: 0.07 }, (v) => {
   for (let i = 0; i < 3; i++) tick(v, rnd(0.05, 0.18), rnd(2500, 5000), 0.025, 0.12, 'bandpass', 3);
 });
 
-def('hit_metal', { vol: 0.6, ref: 6, max: 80, vary: 0.05 }, (v) => {
+def('hit_metal', { sample: smp('harvest_metal', 2), sgain: 0.7, vol: 0.6, ref: 6, max: 80, vary: 0.05 }, (v) => {
   const base = 430;
   const ratios = [1, 1.47, 2.09, 2.56, 3.39, 4.18];
   for (let i = 0; i < ratios.length; i++) {
@@ -429,7 +487,7 @@ def('building_collapse', { vol: 0.95, ref: 14, max: 190, roll: 1.6, vary: 0.06, 
   }
 });
 
-def('swing', { vol: 0.5, ref: 3, max: 20, vary: 0.1 }, (v) => {
+def('swing', { sample: smp('swing', 2), sgain: 0.66, vol: 0.5, ref: 3, max: 20, vary: 0.1 }, (v) => {
   v.noise({
     dur: 0.2, g: 0.5, env: [[0.07, 1], [0.2, 0]],
     flt: { type: 'bandpass', f: 500, fenv: [[0.08, 2400], [0.2, 700]], q: 1.4 },
@@ -685,7 +743,7 @@ function loopKit(ctx, noise, t, sources) {
 const LOOPS = {
   // Soft magical hum with a slow shimmer. Positional; nearest 4 are audible.
   chest_hum: {
-    vol: 0.5, ref: 2.5, max: 22, roll: 1.6, positional: true, maxActive: 4,
+    vol: 0.2, ref: 2.5, max: 22, roll: 1.6, positional: true, maxActive: 4,
     build(ctx, out, noise, t) {
       const src = [];
       const k = loopKit(ctx, noise, t, src);
@@ -932,6 +990,7 @@ export class Sfx {
       panWidth: 0.85, // maximum stereo pan
       invertPan: false, // flip left/right if the world is left-handed
       musicVolume: 0.6,
+      debug: false, // console.warn exceptions that public methods swallow
     };
     this._volume = 0.8;
     this._muted = false;
@@ -944,9 +1003,53 @@ export class Sfx {
     this._loopT = -1;
     this._music = null;
     this._wantMusic = null;
+    this._custom = Object.create(null); // music name -> audio file URL (local override)
+    this._smp = new Map(); // sample URL -> { url, state, bytes, buf, error }
+    this._smpLoad = null; // preloadSamples() promise (fetch phase)
+    this._rr = Object.create(null); // round-robin position per "name|key"
+    /** How one-shots were rendered: decoded sample vs synth fallback. */
+    this.stats = { sample: 0, synth: 0, last: null };
     this._grace = 0;
     this._noise = null;
     this._autoBound = false;
+    this._offline = false;
+    this._offlineEnd = 0;
+    /** Last exception swallowed by a public method (debugging aid), or null. */
+    this.lastError = null;
+  }
+
+  /**
+   * Tooling/tests: an engine bound to an OfflineAudioContext so sounds can be
+   * rendered to a buffer and measured without a sound card.
+   *   const e = Sfx.offline({ seconds: 2 });
+   *   e.play('shot_rifle');
+   *   const buffer = await e.ctx.startRendering();
+   * opts: { seconds = 2, sampleRate = 44100, volume, musicVolume }. Looping
+   * music is scheduled in full up front (timers cannot follow an offline
+   * clock). Returns null when OfflineAudioContext is unavailable.
+   */
+  static offline(opts) {
+    try {
+      const o = opts || NO_OPTS;
+      const OAC = globalThis.OfflineAudioContext || globalThis.webkitOfflineAudioContext;
+      if (!OAC) return null;
+      const rate = isNum(o.sampleRate) ? o.sampleRate : 44100;
+      const seconds = isNum(o.seconds) ? Math.max(0.05, o.seconds) : 2;
+      const e = new Sfx();
+      e._offline = true;
+      e._offlineEnd = seconds;
+      if (isNum(o.volume)) e._volume = clamp(o.volume, 0, 1);
+      if (isNum(o.musicVolume)) e.config.musicVolume = clamp(o.musicVolume, 0, 1);
+      e._init(new OAC(2, Math.ceil(rate * seconds), rate));
+      return e;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  _fail(err) {
+    this.lastError = err;
+    if (this.config.debug && typeof console !== 'undefined') console.warn('[sfx]', err);
   }
 
   // --- lifecycle -------------------------------------------------------------
@@ -986,9 +1089,14 @@ export class Sfx {
     try {
       const el = target || (typeof window !== 'undefined' ? window : null);
       if (!el || this._autoBound) return;
-      this._autoBound = true;
       const go = () => this.unlock();
-      for (const type of ['pointerdown', 'keydown', 'touchend']) el.addEventListener(type, go, { passive: true });
+      const types = ['pointerdown', 'keydown', 'touchend'];
+      for (const type of types) el.addEventListener(type, go, { passive: true });
+      // dispose() removes these again; otherwise the next click would quietly
+      // build a new AudioContext on an engine the game has thrown away.
+      this._autoBound = () => {
+        for (const type of types) el.removeEventListener(type, go);
+      };
     } catch (e) { /* ignore */ }
   }
 
@@ -1003,7 +1111,20 @@ export class Sfx {
     comp.release.value = 0.18;
     const master = ctx.createGain();
     master.gain.value = this._masterTarget();
-    comp.connect(master);
+    // comp -> trim -> soft clipper -> master volume -> speakers
+    const trim = ctx.createGain();
+    trim.gain.value = OUT_TRIM / CLIP_RANGE;
+    comp.connect(trim);
+    let guard = trim;
+    if (typeof ctx.createWaveShaper === 'function') {
+      const clip = ctx.createWaveShaper();
+      clip.curve = makeClipCurve();
+      trim.connect(clip);
+      guard = clip;
+    } else {
+      trim.gain.value = OUT_TRIM;
+    }
+    guard.connect(master);
     master.connect(ctx.destination);
     const bus = (g) => {
       const n = ctx.createGain();
@@ -1019,11 +1140,150 @@ export class Sfx {
     ctx.onstatechange = () => {
       if (ctx.state === 'running') this._onRunning();
     };
+    // recorded samples: fetch (once) and decode now that a context exists
+    if (this._smpLoad) this._decodeAll();
+    else if (!this._offline) this.preloadSamples();
+  }
+
+  // --- recorded samples --------------------------------------------------------
+
+  /**
+   * Fetch every recorded sample and decode it once an AudioContext exists.
+   * Called automatically on unlock; the game may call it earlier (e.g. while
+   * loading) so the bytes are already downloaded when the player clicks.
+   * Resolves (never rejects) with sampleInfo(). Missing or undecodable files
+   * just leave that sound on its synth recipe.
+   */
+  preloadSamples() {
+    try {
+      if (!this._smpLoad) {
+        const urls = new Set();
+        for (const name in SOUNDS) {
+          const s = SOUNDS[name].sample;
+          if (!s) continue;
+          const lists = Array.isArray(s) ? [s] : Object.values(s);
+          for (const l of lists) for (const u of l) urls.add(u);
+        }
+        if (typeof fetch !== 'function' || !urls.size) {
+          this._smpLoad = Promise.resolve();
+        } else {
+          const jobs = [];
+          for (const url of urls) {
+            const e = { url, state: 'fetch', bytes: null, buf: null, error: null };
+            this._smp.set(url, e);
+            jobs.push(
+              fetch(url)
+                .then((r) => {
+                  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                  return r.arrayBuffer();
+                })
+                .then((b) => {
+                  e.bytes = b;
+                  e.state = 'fetched';
+                  return this._decode(e);
+                })
+                .catch((err) => {
+                  e.state = 'error';
+                  e.error = String((err && err.message) || err);
+                })
+            );
+          }
+          this._smpLoad = Promise.all(jobs);
+        }
+      }
+      return this._smpLoad.then(() => this._decodeAll()).then(() => this.sampleInfo(), () => this.sampleInfo());
+    } catch (err) {
+      this._fail(err);
+      return Promise.resolve(this.sampleInfo());
+    }
+  }
+
+  _decodeAll() {
+    const jobs = [];
+    for (const e of this._smp.values()) if (e.state === 'fetched') jobs.push(this._decode(e));
+    return Promise.all(jobs);
+  }
+
+  _decode(e) {
+    const ctx = this.ctx;
+    if (!ctx || e.state !== 'fetched' || !e.bytes) return Promise.resolve();
+    e.state = 'decoding';
+    const bytes = e.bytes;
+    e.bytes = null;
+    return new Promise((resolve) => {
+      let settled = false;
+      const ok = (buf) => {
+        if (settled) return;
+        settled = true;
+        e.buf = buf;
+        e.state = buf ? 'ok' : 'error';
+        resolve();
+      };
+      const bad = (err) => {
+        if (settled) return;
+        settled = true;
+        e.state = 'error';
+        e.error = String((err && err.message) || err || 'decode failed');
+        resolve();
+      };
+      try {
+        // callback form for older Safari; the promise form is handled too
+        const p = ctx.decodeAudioData(bytes, ok, bad);
+        if (p && typeof p.then === 'function') p.then(ok, bad);
+      } catch (err) {
+        bad(err);
+      }
+    });
+  }
+
+  /** Sample loading state, for tooling: { total, ok, pending, failed, errors, played, synth }. */
+  sampleInfo() {
+    let ok = 0;
+    let failed = 0;
+    let pending = 0;
+    const errors = [];
+    for (const e of this._smp.values()) {
+      if (e.state === 'ok') ok++;
+      else if (e.state === 'error') {
+        failed++;
+        errors.push(`${e.url}: ${e.error}`);
+      } else pending++;
+    }
+    return { total: this._smp.size, ok, pending, failed, errors, played: this.stats.sample, synth: this.stats.synth };
+  }
+
+  /** A decoded buffer for this sound (round-robin over its variants), or null. */
+  _pickSample(d, o) {
+    const s = d.sample;
+    let list = s;
+    let key = '';
+    if (!Array.isArray(s)) {
+      const raw = d.sampleBy ? o[d.sampleBy] : undefined;
+      key = typeof raw === 'string' ? SAMPLE_ALIAS[raw] || raw : 'default';
+      if (!s[key]) key = 'default';
+      list = s[key];
+    }
+    if (!list || !list.length) return null;
+    const rk = d.name + '|' + key;
+    const n = list.length;
+    // start after the last variant played, with a random skip so long runs don't loop audibly
+    const prev = this._rr[rk];
+    const start = prev === undefined ? Math.floor(Math.random() * n) : prev + 1 + (n > 2 && Math.random() < 0.35 ? 1 : 0);
+    for (let k = 0; k < n; k++) {
+      const i = (start + k) % n;
+      const e = this._smp.get(list[i]);
+      if (e && e.buf) {
+        this._rr[rk] = i;
+        return e.buf;
+      }
+    }
+    return null;
   }
 
   _ok() {
     const ctx = this.ctx;
     if (!ctx) return false;
+    if (this._offline) return ctx.state !== 'closed';
     if (ctx.state === 'running') return true;
     return ctx.state === 'suspended' && wallNow() < this._grace;
   }
@@ -1145,6 +1405,7 @@ export class Sfx {
     try {
       return this._play(name, opts || NO_OPTS);
     } catch (e) {
+      this._fail(e);
       return false;
     }
   }
@@ -1197,11 +1458,31 @@ export class Sfx {
     tail.connect(this.sfxBus);
 
     const pitch = clamp((isNum(o.pitch) ? o.pitch : 1) * (1 + (Math.random() * 2 - 1) * d.vary), 0.25, 4);
+    const buf = d.sample && this._smp.size ? this._pickSample(d, o) : null;
+    if (buf) {
+      // recorded variant: same gain / lowpass / pan chain, pitch via playbackRate
+      if (d.sgain !== undefined) out.gain.value = gain * d.sgain;
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.playbackRate.value = pitch;
+      src.connect(out);
+      src.start(now);
+      nodes.push(src);
+      const voice = { name, out, nodes, sources: [src], t0: now, end: now + buf.duration / pitch, loud, done: false, sample: true };
+      src.onended = () => this._release(voice);
+      this._voices.push(voice);
+      this.stats.sample++;
+      this.stats.last = 'sample';
+      return true;
+    }
+    this.stats.synth++;
+    this.stats.last = 'synth';
     const v = new Voice(ctx, out, now, pitch, this._noise);
     const voice = { name, out, nodes, sources: v.sources, t0: now, end: now, loud, done: false };
     try {
       d.fn(v, o);
     } catch (e) {
+      this._fail(e);
       voice.end = v.end;
       this._kill(voice, now);
       return false;
@@ -1298,7 +1579,9 @@ export class Sfx {
       }
       if (isNum(o.volume)) e.vol = Math.max(0, o.volume);
       if (this._ok()) this._updateLoops(this.ctx.currentTime, true);
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      this._fail(e);
+    }
   }
 
   /** Stop a loop. `id` (or { id }) selects one instance; omit to stop all of that name. */
@@ -1388,6 +1671,7 @@ export class Sfx {
     try {
       sources = e.def.build(ctx, gain, this._noise, now);
     } catch (err) {
+      this._fail(err);
       try {
         gain.disconnect();
       } catch (e2) { /* ignore */ }
@@ -1432,7 +1716,21 @@ export class Sfx {
       if (!this._ok()) return;
       if (M.loop && this._music && this._music.name === name) return;
       this._startMusic(name);
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      this._fail(e);
+    }
+  }
+
+  /**
+   * Replace a music track with an audio file (e.g. a local, git-ignored MP3).
+   * The file plays through the music bus, so volume settings apply; it loops
+   * when the track it replaces loops. Pass null to go back to the synth track.
+   */
+  setCustomMusic(name, url) {
+    if (!(name in MUSIC)) return;
+    if (url) this._custom[name] = url;
+    else delete this._custom[name];
+    if (this._music && this._music.name === name && this._ok()) this._startMusic(name);
   }
 
   stopMusic() {
@@ -1450,16 +1748,45 @@ export class Sfx {
     const track = ctx.createGain();
     track.gain.value = M.vol;
     track.connect(this.musicBus);
-    const m = { name, M, track, nodes: [track], buses: null, step: 0, next: now + 0.06, timer: null, endTimer: null };
+    const m = { name, M, track, nodes: [track], buses: null, step: 0, next: now + 0.06, timer: null, endTimer: null, audio: null };
     this._music = m;
+    const customUrl = this._custom[name];
+    if (customUrl && !this._offline && typeof Audio !== 'undefined') {
+      const audio = new Audio(customUrl);
+      audio.loop = !!M.loop;
+      audio.crossOrigin = 'anonymous';
+      const src = ctx.createMediaElementSource(audio);
+      src.connect(track);
+      m.nodes.push(src);
+      m.audio = audio;
+      track.gain.value = 0.9; // recorded music is already mixed; skip the synth track level
+      audio.addEventListener('ended', () => {
+        if (this._music === m) this._endMusic(0.05);
+      });
+      audio.play().catch((e) => {
+        // file missing or blocked: fall back to the synthesized track
+        if (this._music !== m) return;
+        delete this._custom[name];
+        this._fail(e);
+        this._startMusic(name);
+      });
+      return;
+    }
     if (M.loop) {
       const rig = M.setup(ctx, track);
       m.buses = rig.buses;
       for (const n of rig.nodes) m.nodes.push(n);
+      if (this._offline) {
+        for (; m.next < this._offlineEnd; m.step++, m.next += M.stepDur) {
+          M.step(new Voice(ctx, m.track, m.next, 1, this._noise), m, m.step % M.steps);
+        }
+        return;
+      }
       m.timer = setInterval(() => this._musicTick(m), 40);
       this._musicTick(m);
     } else {
       M.play(new Voice(ctx, track, now + 0.05, 1, this._noise));
+      if (this._offline) return;
       m.endTimer = setTimeout(() => {
         if (this._music === m) this._endMusic(0.05);
       }, (M.dur + 0.4) * 1000);
@@ -1488,7 +1815,9 @@ export class Sfx {
         m.step++;
         m.next += M.stepDur;
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      this._fail(e);
+    }
   }
 
   _endMusic(fade) {
@@ -1503,6 +1832,13 @@ export class Sfx {
       m.track.gain.setTargetAtTime(0, now, fade);
     } catch (e) { /* ignore */ }
     setTimeout(() => {
+      if (m.audio) {
+        try {
+          m.audio.pause();
+          m.audio.removeAttribute('src');
+          m.audio.load();
+        } catch (e) { /* ignore */ }
+      }
       for (const n of m.nodes) {
         try {
           n.disconnect();
@@ -1516,20 +1852,28 @@ export class Sfx {
     return this._music ? this._music.name : null;
   }
 
-  /** Stop everything and close the AudioContext. */
+  /** Stop everything, drop the autoUnlock listeners and close the AudioContext. */
   dispose() {
     try {
+      if (typeof this._autoBound === 'function') this._autoBound();
+      this._autoBound = false;
       this._wantMusic = null;
       this._endMusic(0.01);
       const now = this.ctx ? this.ctx.currentTime : 0;
       for (const e of this._loops.values()) this._loopOff(e, now);
       this._loops.clear();
       for (const v of this._voices.slice()) this._kill(v, now);
+      this._lastPlay.clear();
       const ctx = this.ctx;
       this.ctx = null;
-      if (ctx && typeof ctx.close === 'function') {
-        const p = ctx.close();
-        if (p && typeof p.catch === 'function') p.catch(() => {});
+      this.comp = this.master = this.sfxBus = this.loopBus = this.musicBus = null;
+      this._noise = null;
+      if (ctx) {
+        ctx.onstatechange = null;
+        if (typeof ctx.close === 'function') {
+          const p = ctx.close();
+          if (p && typeof p.catch === 'function') p.catch(() => {});
+        }
       }
     } catch (e) { /* ignore */ }
   }

@@ -1,0 +1,23 @@
+{
+  "format": "int16-cm",
+  "endian": "little",
+  "layout": "row-major; row r -> z = minZ + r*cell (north to south), col c -> x = minX + c*cell (west to east); samples are grid points",
+  "cell": 4,
+  "cols": 910,
+  "rows": 1251,
+  "minX": -1912,
+  "minZ": -3008,
+  "maxX": 1724,
+  "maxZ": 1992,
+  "baseElevation": 388.3,
+  "min": -59.37,
+  "max": 20.04,
+  "elevationMin": 328.9,
+  "elevationMax": 408.3,
+  "originHeight": 6.84,
+  "units": "metres; game height = int16 / 100; real elevation (NAVD88) = game height + baseElevation",
+  "source": "USGS 3D Elevation Program (3DEP), best-available DEM (1 m lidar, AR Benton Co 2015), public domain",
+  "sourceUrl": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer",
+  "fetched": "2026-11-14T21:11:58.456Z",
+  "holesFilled": 0
+}

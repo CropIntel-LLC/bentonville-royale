@@ -138,6 +138,9 @@ const SQUARE = {
     `<path d="M38.500 24A14.500 14.500 0 1 1 33 12.700" fill="none" stroke="${INK}" stroke-width="11" stroke-linecap="round"/>` +
     `<path d="M38.500 24A14.500 14.500 0 1 1 33 12.700" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/>` +
     `<path d="M29 4.500L40 12L30 19.500Z" fill="#fff" ${S}/>`,
+  pin:
+    `<path d="M24 45C14 33 8.500 26 8.500 18.500C8.500 10 15.500 4 24 4C32.500 4 39.500 10 39.500 18.500C39.500 26 34 33 24 45Z" fill="#ff5d4a" ${S}/>` +
+    `<circle cx="24" cy="18.500" r="6" fill="#fff" ${S}/>`,
   map:
     `<path d="M4.500 11L17 6L31 11L43.500 6V37L31 42L17 37L4.500 42Z" fill="#fff" ${S}/>` +
     `<path d="M17 6V37M31 11V42" fill="none" stroke="${INK}" stroke-width="2.500"/>` +
